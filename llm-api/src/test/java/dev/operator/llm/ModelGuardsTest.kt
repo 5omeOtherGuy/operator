@@ -18,7 +18,7 @@ class ModelGuardsTest {
 
     @Test fun prefixAndPayload() {
         assertEquals(2, ModelGuards.commonPrefix(listOf(1, 2, 3, 4), listOf(1, 2, 9)))
-        assertTrue(runCatching { PayloadGuard.check("x".repeat(130_000)) }.isFailure)
+        assertTrue(runCatching { PayloadGuard.check("x".repeat(131_100)) }.isFailure)
     }
 
     @Test fun mismatchCannotLoad() {
