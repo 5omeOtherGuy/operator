@@ -173,7 +173,8 @@ class LlmClient(private val context: Context) : LlmPort, AutoCloseable {
                 override fun onDone() = cb.onDone()
                 override fun onError(reason: String?) = cb.onError(reason)
             }) }
-        return GenerationResult(reply.text.toString(), reply.ids, StopReason.MAX_TOKENS,
+        return GenerationResult(reply.text.toString(), reply.ids,
+            if (reply.ids.isNotEmpty() && reply.ids.size < maxTokens) StopReason.EOG else StopReason.MAX_TOKENS,
             reply.stats?.core() ?: emptyStats())
     }
     override suspend fun labelLogits(req: CoreRequest, role: CoreRole, promptParts: List<String>,

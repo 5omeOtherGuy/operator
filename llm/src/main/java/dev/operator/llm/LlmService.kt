@@ -106,6 +106,8 @@ class LlmService : Service() {
                 PayloadGuard.check(*(promptParts + listOfNotNull(gbnf)).toTypedArray())
                 val prompt = engine.tokenize(promptParts.joinToString(""), false, true)
                 val generated = engine.generate(req, prompt, gbnf, maxTokens)
+                PayloadGuard.checkArray(generated.size, Int.SIZE_BYTES)
+                callback(cb) { it.onTokenIds(generated) }
                 generated.forEach { token ->
                     val text = engine.detokenize(intArrayOf(token))
                     PayloadGuard.check(text)
