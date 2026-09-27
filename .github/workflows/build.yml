@@ -158,7 +158,8 @@ jobs:
           done
           # Belt and braces on the shipped artefacts themselves.
           for apk in $(find artifacts -iname 'app-*.apk'); do
-            if unzip -p "$apk" AndroidManifest.xml | strings | grep -q 'android.permission.INTERNET'; then
+            hits="$(unzip -p "$apk" AndroidManifest.xml | strings | grep -c 'android.permission.INTERNET' || true)"
+            if [ "${hits:-0}" -gt 0 ]; then
               echo "::error file=$apk::INTERNET is in the packaged manifest"
               status=1
             else

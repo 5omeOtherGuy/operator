@@ -7,8 +7,8 @@ import android.view.accessibility.AccessibilityEvent
 /**
  * The hands' accessibility service (FOUNDATION §3.2 A1, §6; ADR-0001, ADR-0004).
  *
- * Moved here from the scaffold's `dev.operator` package (the PLAN.md slice table gives the hands
- * `app/.../hands/**`). F0 declares the service, its config XML and its lifecycle hooks only; S7
+ * Moved here from the scaffold's `dev.operator` package (the PLAN.md slice table gives the hands the
+ * `hands` package). F0 declares the service, its config XML and its lifecycle hooks only; S7
  * implements the tree reader over `UiNode`, the gestures, the key filter and the overlay host, and
  * S8 wiring the Disarm path of §9.6 in `onUnbind`.
  */
