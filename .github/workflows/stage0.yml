@@ -1,0 +1,158 @@
+name: stage0
+
+# FOUNDATION §14 Stage 0 (L839-843): CI artifacts for the benchmark spike.
+#   bench - llama-bench + llama-cli for android arm64, cross-built from the pinned submodule
+#          (9588757) with the §4.2 flag set, plus every ggml backend .so for /data/local/tmp
+#   app   - the upstream examples/llama.android app built UNCHANGED as its own Gradle project
+#          (§14: confirm on the phone that a CPU variant loads from nativeLibraryDir, R11/U37)
+# Nothing here touches a phone; the artifacts are consumed by tools/stage0/run.sh (M slice).
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/stage0/**
+      - .github/workflows/stage0.yml
+
+concurrency:
+  group: stage0-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  OPERATOR_NDK_VERSION: 29.0.13113456
+  OPERATOR_CMAKE_VERSION: 3.31.6
+
+jobs:
+  bench:
+    name: bench (llama-bench + llama-cli, android arm64, §4.2 flags)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Cache the pinned NDK and CMake
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk/${{ env.OPERATOR_NDK_VERSION }}
+            ${{ env.ANDROID_HOME }}/cmake/${{ env.OPERATOR_CMAKE_VERSION }}
+          key: stage0-ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-${{ hashFiles('third_party/llama.cpp/**/CMakeLists.txt') }}
+          restore-keys: |
+            stage0-ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-
+      - name: Install the pinned NDK and CMake
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME" || { echo "::error::Android SDK not found at $ANDROID_HOME"; exit 1; }
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
+          yes | "$SDKMANAGER" --install "ndk;$OPERATOR_NDK_VERSION" "cmake;$OPERATOR_CMAKE_VERSION" > /dev/null || true
+          test -d "$ANDROID_HOME/ndk/$OPERATOR_NDK_VERSION" || { echo "::error::NDK $OPERATOR_NDK_VERSION missing"; exit 1; }
+          test -x "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" || { echo "::error::CMake $OPERATOR_CMAKE_VERSION missing"; exit 1; }
+          "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" --version
+      - name: Configure llama.cpp for android arm64 (§4.2 flags)
+        run: |
+          set -euo pipefail
+          cmake -S third_party/llama.cpp -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/$OPERATOR_NDK_VERSION/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-33 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DGGML_BACKEND_DL=ON \
+            -DGGML_CPU_ALL_VARIANTS=ON \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_CPU_KLEIDIAI=ON \
+            -DGGML_LLAMAFILE=OFF \
+            -DLLAMA_BUILD_COMMON=ON \
+            -DLLAMA_OPENSSL=OFF \
+            -DLLAMA_CURL=OFF \
+            -DLLAMA_BUILD_TOOLS=ON \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_SERVER=OFF
+      # Only the two targets stage 0 needs; the rest of tools/ stays unbuilt.
+      - name: Build llama-bench and llama-cli
+        run: cmake --build build --target llama-bench llama-cli --config Release -j "$(nproc)"
+      - name: Collect the bench bundle and assert its contents (DoD 1)
+        run: |
+          set -euo pipefail
+          dist=stage0-bench-arm64
+          mkdir -p "$dist"
+          find build -type f \( -name llama-bench -o -name llama-cli \
+            -o -name 'libggml*.so' -o -name 'libllama*.so' -o -name 'libcommon*.so' \) \
+            -exec cp -t "$dist" {} +
+          # ggml_backend_load_all() discovers libggml-<name>-*.so next to the executable
+          # (ggml-backend-reg.cpp search paths); run.sh keeps everything flat in /data/local/tmp.
+          test -x "$dist/llama-bench" || { echo "::error::llama-bench missing from the build"; exit 1; }
+          test -x "$dist/llama-cli" || { echo "::error::llama-cli missing from the build"; exit 1; }
+          n_variants="$(find "$dist" -maxdepth 1 -name 'libggml-cpu-*.so' | wc -l)"
+          [ "$n_variants" -ge 1 ] || { echo "::error::no libggml-cpu-*.so variant in the build"; exit 1; }
+          echo "CPU variants shipped: $n_variants"
+          (cd "$dist" && sha256sum ./* | sort -k2 > SHA256SUMS)
+          ls -l "$dist"
+      - name: Upload the bench bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage0-bench-arm64
+          if-no-files-found: error
+          path: stage0-bench-arm64/
+
+  app:
+    name: app (upstream examples/llama.android, unchanged)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Cache the pinned NDK and CMake
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk/${{ env.OPERATOR_NDK_VERSION }}
+            ${{ env.ANDROID_HOME }}/cmake/${{ env.OPERATOR_CMAKE_VERSION }}
+          key: stage0-ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-${{ hashFiles('third_party/llama.cpp/**/CMakeLists.txt') }}
+          restore-keys: |
+            stage0-ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-
+      - name: Install the pinned NDK and CMake
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME" || { echo "::error::Android SDK not found at $ANDROID_HOME"; exit 1; }
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
+          # The upstream lib module pins ndkVersion 29.0.13113456 and cmake 3.31.6; the GitHub
+          # runner image ships neither at these versions, so both are installed (§4.2, V13).
+          yes | "$SDKMANAGER" --install "ndk;$OPERATOR_NDK_VERSION" "cmake;$OPERATOR_CMAKE_VERSION" > /dev/null || true
+          test -d "$ANDROID_HOME/ndk/$OPERATOR_NDK_VERSION" || { echo "::error::NDK $OPERATOR_NDK_VERSION missing"; exit 1; }
+          test -x "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" || { echo "::error::CMake $OPERATOR_CMAKE_VERSION missing"; exit 1; }
+          "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" --version
+      # UNCHANGED: the upstream project builds from its own wrapper and version catalog; no
+      # source, manifest or Gradle file under third_party/ is touched (COMMON.md forbids it).
+      - name: Build the upstream app
+        run: |
+          cd third_party/llama.cpp/examples/llama.android
+          ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace --console=plain
+      - name: Collect the APKs and assert at least one exists (DoD 1)
+        run: |
+          set -euo pipefail
+          mkdir -p stage0-llama-android-apk
+          find third_party/llama.cpp/examples/llama.android/app/build/outputs/apk -name '*.apk' \
+            -exec cp -t stage0-llama-android-apk {} +
+          n_apks="$(find stage0-llama-android-apk -name '*.apk' | wc -l)"
+          [ "$n_apks" -ge 1 ] || { echo "::error::no upstream APK produced"; exit 1; }
+          (cd stage0-llama-android-apk && sha256sum ./* | sort -k2 > SHA256SUMS)
+          ls -l stage0-llama-android-apk
+      - name: Upload the upstream APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage0-llama-android-apk
+          if-no-files-found: error
+          path: stage0-llama-android-apk/
