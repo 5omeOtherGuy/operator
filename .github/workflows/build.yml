@@ -175,7 +175,7 @@ jobs:
           test -n "$dev_apk" || { echo "::error::the dev APK is not in the artifact"; exit 1; }
           test -n "$stub_apk" || { echo "::error::the emulatorStub APK is not in the artifact"; exit 1; }
           echo "dev APK: $dev_apk"
-          unzip -Z1 "$dev_apk" | grep '\.so$' | sort
+          unzip -Z1 "$dev_apk" | grep '\.so$' | sort || true
           echo "emulatorStub APK: $stub_apk"
           unzip -Z1 "$stub_apk" | grep '\.so$' | sort || true
           cpu_variants="$(unzip -Z1 "$dev_apk" | grep -cE '^lib/arm64-v8a/libggml-cpu[^/]*\.so$' || true)"
