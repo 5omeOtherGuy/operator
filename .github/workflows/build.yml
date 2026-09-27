@@ -112,6 +112,7 @@ jobs:
             app/build/outputs/apk/emulatorStub/release/*.apk
             fixture/build/outputs/apk/debug/*.apk
             app/build/intermediates/merged_manifest*/**/AndroidManifest.xml
+            app/build/intermediates/packaged_manifest*/**/AndroidManifest.xml
 
   checks:
     name: checks (S-08, module rule, .so sets)
@@ -141,7 +142,8 @@ jobs:
       - name: S-08 no INTERNET in an operator manifest
         run: |
           set -euo pipefail
-          mapfile -t merged < <(find artifacts -name AndroidManifest.xml -path '*merged*' | sort)
+          # Every AndroidManifest.xml in the artifact is a merged or a packaged manifest of :app.
+          mapfile -t merged < <(find artifacts -name AndroidManifest.xml | sort)
           printf '%s\n' "${merged[@]}"
           if [ "${#merged[@]}" -lt 2 ]; then
             echo "::error::expected the dev and the emulatorStub merged manifest in the artifact"
