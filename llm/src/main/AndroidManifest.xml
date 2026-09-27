@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ADR-0002, FOUNDATION §2.1: LlmService runs in its own process, ":llm", so a native crash or an
+     LMK kill of the model does not touch the accessibility host process. Same UID and app id as
+     dev.operator; the caller is the main process. No INTERNET permission here (§4.8, C12). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <service
+            android:name="dev.operator.llm.LlmService"
+            android:exported="false"
+            android:process=":llm" />
+
+    </application>
+
+</manifest>

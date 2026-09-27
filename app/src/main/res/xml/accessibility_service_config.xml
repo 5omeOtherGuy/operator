@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The hands' service config (FOUNDATION §3.2 A1, §6.1, §9.2 item 3, C5).
+     Flags: FLAG_RETRIEVE_INTERACTIVE_WINDOWS (getWindows is otherwise empty [04§F11]),
+     FLAG_INCLUDE_NOT_IMPORTANT_VIEWS, FLAG_REPORT_VIEW_IDS (element keys, §6.3),
+     FLAG_REQUEST_FILTER_KEY_EVENTS (the gate reads the volume hold, §9.2 item 3),
+     FLAG_REQUEST_ACCESSIBILITY_BUTTON (§3.2 A11).
+     isAccessibilityTool=false on purpose: a tool service would be exempt from the data-sensitive
+     protections the gate relies on, and it would misstate the app to Play Protect (§3.3, C5).
+     No android:packageNames: the agent operates every app inside the task's app set (§8.3). -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeWindowsChanged|typeViewClicked|typeViewLongClicked|typeViewFocused|typeViewScrolled|typeViewSelected|typeViewTextChanged|typeViewAccessibilityFocused|typeAnnouncement"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds|flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows|flagRequestAccessibilityButton"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/service_screen_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="100"
+    android:summary="@string/service_screen_summary" />

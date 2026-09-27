@@ -10,6 +10,9 @@ local.properties
 *.iml
 .cxx/
 .externalNativeBuild/
+# ccache and the CI artifact checkout (the `apk` job caches $CCACHE_DIR inside the workspace)
+.ccache/
+artifacts/
 
 # Model weights and runtime data (never committed)
 *.gguf

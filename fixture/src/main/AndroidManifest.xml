@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- dev.operator.fixture: the evaluation fixtures (FOUNDATION §2.1, §12; ADR-0015).
+     This is the only module allowed to declare android.permission.INTERNET (C12) — it serves the
+     localhost test page the S-11 exfiltration fixture needs. The operator manifest never declares it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/fixture_app_name"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <activity
+            android:name="dev.operator.fixture.FixtureActivity"
+            android:exported="true"
+            android:label="@string/fixture_app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,189 @@
+name: build
+
+# FOUNDATION §12 / ADR-0015 CI job graph, M1 subset:
+#   jvm    - :agent-core tests on the JDK-only path (no Android SDK at all)
+#   kotlin - both :app flavours compiled, no native code
+#   apk    - dev (arm64-v8a, native :llm), emulatorStub (x86_64, no .so) and the fixture APK
+#   checks - S-08 module rule, INTERNET-free operator manifests, .so sets of both APKs
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # GitHub-hosted ubuntu images ship the SDK here and pre-accept the licences.
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  OPERATOR_NDK_VERSION: 29.0.13113456
+  OPERATOR_CMAKE_VERSION: 3.31.6
+
+jobs:
+  jvm:
+    name: jvm (agent-core tests, JDK only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      # Emptying the SDK variables exercises the JDK-only path of settings.gradle.kts: the Android
+      # modules are skipped and :agent-core builds and tests on its own (docs/m1/PLAN.md).
+      - name: agent-core tests
+        run: ./gradlew :agent-core:test --stacktrace --console=plain
+        env:
+          ANDROID_HOME: ""
+          ANDROID_SDK_ROOT: ""
+
+  kotlin:
+    name: kotlin (both :app flavours, no native)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Compile both flavours
+        run: ./gradlew :app:assembleDevDebug :app:assembleEmulatorStubDebug -Poperator.noNative=true --stacktrace --console=plain
+
+  apk:
+    name: apk (dev arm64 native, emulatorStub, fixture)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install ccache
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+      - name: Cache the pinned NDK, CMake and ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk/${{ env.OPERATOR_NDK_VERSION }}
+            ${{ env.ANDROID_HOME }}/cmake/${{ env.OPERATOR_CMAKE_VERSION }}
+            ${{ github.workspace }}/.ccache
+          key: ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-${{ hashFiles('third_party/llama.cpp/examples/llama.android/**', 'llm/src/main/cpp/**') }}
+          restore-keys: |
+            ndk-${{ env.OPERATOR_NDK_VERSION }}-cmake-${{ env.OPERATOR_CMAKE_VERSION }}-
+      - name: Install the pinned NDK and CMake
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_HOME" || { echo "::error::Android SDK not found at $ANDROID_HOME"; exit 1; }
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
+          yes | "$SDKMANAGER" --install "ndk;$OPERATOR_NDK_VERSION" "cmake;$OPERATOR_CMAKE_VERSION" > /dev/null
+          test -d "$ANDROID_HOME/ndk/$OPERATOR_NDK_VERSION" || { echo "::error::NDK $OPERATOR_NDK_VERSION missing"; exit 1; }
+          test -x "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" || { echo "::error::CMake $OPERATOR_CMAKE_VERSION missing"; exit 1; }
+          "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" --version
+      - name: Build the dev APK (arm64-v8a, native :llm) and the fixture
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: ./gradlew :app:assembleDevRelease :fixture:assembleDebug -Poperator.ccache=true --stacktrace --console=plain
+      - name: Build the emulatorStub APK (x86_64, no native code)
+        run: ./gradlew :app:assembleEmulatorStubRelease -Poperator.noNative=true --stacktrace --console=plain
+      - name: ccache stats
+        run: ccache -s || true
+      - name: Upload the APKs and the merged manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-apks
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/dev/release/*.apk
+            app/build/outputs/apk/emulatorStub/release/*.apk
+            fixture/build/outputs/apk/debug/*.apk
+            app/build/intermediates/merged_manifest*/**/AndroidManifest.xml
+
+  checks:
+    name: checks (S-08, module rule, .so sets)
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: operator-apks
+          path: artifacts
+      - name: List the artifact
+        run: find artifacts -type f | sort
+      - name: S-08 module rule (effect APIs only in hands/, adapters/, executor/)
+        run: |
+          set -euo pipefail
+          matches="$(grep -rnE 'dispatchGesture|performAction|DevicePolicyManager|SmsManager' \
+            app/src llm/src llm-api/src fixture/src agent-core/src --include='*.kt' --include='*.java' \
+            | grep -vE '/(hands|adapters|executor)/' || true)"
+          if [ -n "$matches" ]; then
+            printf '%s\n' "$matches"
+            echo "::error::FOUNDATION §2.2: gesture, DPM and SMS calls stay inside hands/, adapters/ and executor/"
+            exit 1
+          fi
+          echo "S-08 module rule: no effect API outside hands/, adapters/ and executor/"
+      - name: S-08 no INTERNET in an operator manifest
+        run: |
+          set -euo pipefail
+          mapfile -t merged < <(find artifacts -name AndroidManifest.xml -path '*merged*' | sort)
+          printf '%s\n' "${merged[@]}"
+          if [ "${#merged[@]}" -lt 2 ]; then
+            echo "::error::expected the dev and the emulatorStub merged manifest in the artifact"
+            exit 1
+          fi
+          status=0
+          for manifest in "${merged[@]}"; do
+            if grep -q 'android.permission.INTERNET' "$manifest"; then
+              echo "::error file=$manifest::INTERNET is declared in an operator manifest"
+              status=1
+            else
+              echo "no INTERNET: $manifest"
+            fi
+          done
+          # Belt and braces on the shipped artefacts themselves.
+          for apk in $(find artifacts -iname 'app-*.apk'); do
+            if unzip -p "$apk" AndroidManifest.xml | strings | grep -q 'android.permission.INTERNET'; then
+              echo "::error file=$apk::INTERNET is in the packaged manifest"
+              status=1
+            else
+              echo "no INTERNET: $apk"
+            fi
+          done
+          exit $status
+      - name: Native library set of both APKs
+        run: |
+          set -euo pipefail
+          dev_apk="$(find artifacts -iname 'app-dev-release.apk' | head -n 1)"
+          stub_apk="$(find artifacts -iname 'app-*stub*release.apk' | head -n 1)"
+          test -n "$dev_apk" || { echo "::error::the dev APK is not in the artifact"; exit 1; }
+          test -n "$stub_apk" || { echo "::error::the emulatorStub APK is not in the artifact"; exit 1; }
+          echo "dev APK: $dev_apk"
+          unzip -Z1 "$dev_apk" | grep '\.so$' | sort
+          echo "emulatorStub APK: $stub_apk"
+          unzip -Z1 "$stub_apk" | grep '\.so$' | sort || true
+          cpu_variants="$(unzip -Z1 "$dev_apk" | grep -cE '^lib/arm64-v8a/libggml-cpu[^/]*\.so$' || true)"
+          echo "dev APK arm64-v8a libggml-cpu variants: $cpu_variants"
+          if [ "$cpu_variants" -lt 1 ]; then
+            echo "::error::the dev APK ships no libggml-cpu*.so for arm64-v8a (R11: the GGML_BACKEND_DL variants must be packaged)"
+            exit 1
+          fi
+          stub_sos="$(unzip -Z1 "$stub_apk" | grep -c '\.so$' || true)"
+          echo "emulatorStub APK .so files: $stub_sos"
+          if [ "$stub_sos" -ne 0 ]; then
+            echo "::error::the emulatorStub APK must not ship native libraries"
+            exit 1
+          fi

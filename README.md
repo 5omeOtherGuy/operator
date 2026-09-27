@@ -29,3 +29,11 @@ The model reads untrusted text: web pages, notifications, messages. Any action t
 4. Device owner: move the admin actions (install, uninstall, permissions) from the UI path to `DevicePolicyManager`.
 
 Reference device: OnePlus 13 (SM8750, 16 GB RAM), OxygenOS 16.
+
+## Build
+
+`./gradlew :agent-core:test` — the pure Kotlin/JVM module builds and tests with JDK 17 alone. The four Android modules (`:app`, `:llm-api`, `:llm`, `:fixture`) are only included when an Android SDK is present (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `sdk.dir` in `local.properties`), so this works on a JDK-only machine.
+
+APKs come from GitHub Actions: the `apk` job of `.github/workflows/build.yml` builds the `dev` (arm64-v8a, native `:llm`), the `emulatorStub` (x86_64, no native code) and the `fixture` variant and uploads them as the `operator-apks` artifact. The `checks` job prints the `.so` set of both operator APKs and fails when the dev APK carries no `libggml-cpu*.so` or when the stub APK carries any `.so`.
+
+With an SDK and the pinned NDK `29.0.13113456` plus CMake `3.31.6` installed: `./gradlew :app:assembleDevRelease` builds the arm64-v8a dev APK with the native `:llm`, and `./gradlew :app:assembleEmulatorStubRelease -Poperator.noNative=true` builds the stub flavour, which skips `externalNativeBuild` entirely.

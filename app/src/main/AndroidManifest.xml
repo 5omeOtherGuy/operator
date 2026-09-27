@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- dev.operator, the main process (FOUNDATION §2.1, ADR-0002). Kotlin only, no native code.
+     NO INTERNET permission in any variant (§4.8, ADR-0005, C12); the CI `checks` job asserts it on
+     the merged manifest and on the APK. Permissions are the §3.2 M1 column. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- A2 WRITE_SECURE_SETTINGS: re-enable our own a11y service through the secure setting; granted
+         once with adb (`pm grant`, §10.1) and it survives reboots. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- A3 specialUse foreground service, no timeout, restarted after a kill (§2.5). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- A3b on-time watchdog: USE_EXACT_ALARM is protection level normal, granted at install [V11]. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- §2.5 boot chain: BOOT_COMPLETED after the first unlock starts the FGS again. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- §11: the status pill, ASK_OWNER, and the owner-visible notifications of §9.6. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A6/A8 direct APIs of M1: SMS (R2), call (R2), calendar query/insert, usage stats (appops,
+         granted once with adb). READ_CONTACTS, location, microphone and ANSWER_PHONE_CALLS are M2+. -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- §7.1 `launch_app` uses getLaunchIntentForPackage only, so package visibility is scoped to
+         launcher activities instead of QUERY_ALL_PACKAGES. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <!-- §4.1: OpenCL is loaded at run time as a ggml backend module; whether OxygenOS exposes
+             libOpenCL.so is unverified (02-M-2), so it is optional. -->
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false" />
+
+        <!-- §2.5, §3.2 A3: the agent's foreground service, type specialUse, START_STICKY. -->
+        <service
+            android:name="dev.operator.lifecycle.AgentService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="on-device agent that reads the screen and performs the owner's task while a task runs" />
+        </service>
+
+        <!-- §3.2 A1, §6: the hands. Flags in res/xml/accessibility_service_config.xml;
+             isAccessibilityTool=false (C5, §3.3). -->
+        <service
+            android:name="dev.operator.hands.ScreenService"
+            android:exported="true"
+            android:label="@string/service_screen"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- §3.2 A12: notifications read and reply; operator's own rows are excluded (§6.1 rule 1). -->
+        <service
+            android:name="dev.operator.adapters.NotificationListener"
+            android:exported="true"
+            android:label="@string/service_notification_listener"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- §11: the quick settings tile opens the command screen; it never starts a task by itself
+             (S-10). -->
+        <service
+            android:name="dev.operator.ui.QuickSettingsTileService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- §2.5 boot chain and self-heal: boot, first unlock and an update all re-run the Keeper. -->
+        <receiver
+            android:name="dev.operator.lifecycle.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- §2.5, §3.2 A3b: the exact-alarm watchdog fires every 15 min; only our own PendingIntent
+             can reach this receiver, so it stays unexported. -->
+        <receiver
+            android:name="dev.operator.lifecycle.WatchdogReceiver"
+            android:exported="false" />
+
+        <!-- §11: the command screen. It is the launcher and the only place a task starts from, which
+             the OSF and the executor enforce (R3, §9.3 item 1). -->
+        <activity
+            android:name="dev.operator.ui.CommandActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- §11: models and decide backend, keep-warm, denylist, limits, audit viewer, Disarm/Re-arm,
+             self-check. Not exported: owner input is accepted only inside our own activities. -->
+        <activity
+            android:name="dev.operator.ui.SettingsActivity"
+            android:exported="false"
+            android:label="@string/service_settings" />
+
+        <!-- §9.2 item 4: the transparent R3 approval screen (BiometricPrompt BIOMETRIC_STRONG, no
+             device-credential fallback). -->
+        <activity
+            android:name="dev.operator.gate.GateActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+    </application>
+
+</manifest>
