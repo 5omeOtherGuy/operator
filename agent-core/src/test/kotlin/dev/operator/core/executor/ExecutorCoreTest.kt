@@ -39,7 +39,8 @@ class ExecutorCoreTest {
         override val allowedTools = ToolCatalog.base.keys.mapNotNull { it.simpleName }.map {
             it.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
         }.toSet() + setOf("click", "send_sms", "set_text", "read_screen")
-        override val allowedPackages = setOf("example.app", "com.test.browser", "com.test.messaging", "com.android.settings")
+        override val allowedPackages = setOf("example.app", "com.test.browser", "com.test.messaging",
+            "com.test.email", "com.test.social", "com.android.settings")
         override val ownerUtterance = "please do this"
         override var halted = false
         override var steps = 0
@@ -119,7 +120,8 @@ class ExecutorCoreTest {
 
     @Test fun `context rules gate irreversible targets and allow navigation`() = runBlocking {
         val risky = listOf(
-            "com.test.messaging" to "Open", "com.android.settings" to "Open",
+            "com.test.messaging" to "Open", "com.test.email" to "Open",
+            "com.test.social" to "Open", "com.android.settings" to "Open",
             "example.app" to "Delete", "example.app" to "OK",
             "example.app" to "Share", "example.app" to "Send",
             "com.test.browser" to "Search",
