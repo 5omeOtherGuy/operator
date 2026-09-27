@@ -14,7 +14,7 @@ class GateTest {
             assertEquals(GateKeyResult.WAITING, gate.event(Key.DOWN, true, 1000))
             return gate.event(Key.DOWN, false, 1000 + ms)
         }
-        assertEquals(GateKeyResult.FINGERPRINT, hold(900))
+        assertEquals(GateKeyResult.WAITING, hold(900))
         assertEquals(GateKeyResult.APPROVED, hold(1500))
         assertEquals(GateKeyResult.VOID, hold(2600))
         val gate = KeyGate(0)
@@ -39,6 +39,8 @@ class GateTest {
         changed(binding.copy(screenSignature = binding.screenSignature.copy(structuralHash = 43)))
         changed(binding.copy(editedFieldContents = mapOf(ElementKey(9) to "changed")))
         val token = tokens.mint(binding, ApprovalMethod.VOLUME_HOLD, 100)
+        assertFalse(tokens.verifyAndConsume(token.copy(method = ApprovalMethod.BIOMETRIC_STRONG),
+            binding, 200))
         assertTrue(tokens.verifyAndConsume(token, binding, 200))
         assertFalse(tokens.verifyAndConsume(token, binding, 200))
         assertFalse(tokens.verifyAndConsume(tokens.mint(binding, ApprovalMethod.VOLUME_HOLD, 100),

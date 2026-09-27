@@ -115,7 +115,9 @@ class AndroidGate(private val context: Context, private val tokens: ApprovalToke
             GateKeyResult.APPROVED -> if (risk == RiskClass.R3) fingerprint(wait, binding)
                 else wait.complete(GateResult.Approved(tokens.mint(binding, ApprovalMethod.VOLUME_HOLD,
                     SystemClock.elapsedRealtime())))
-            GateKeyResult.FINGERPRINT -> fingerprint(wait, binding)
+            GateKeyResult.FINGERPRINT -> if (risk == RiskClass.R3)
+                wait.complete(GateResult.Denied("R3 requires a valid hold"))
+                else fingerprint(wait, binding)
             GateKeyResult.VOID -> wait.complete(GateResult.Denied("key void"))
             GateKeyResult.WAITING -> Unit
         }

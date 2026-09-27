@@ -13,7 +13,7 @@ class ApprovalTokens(
     private val random: SecureRandom = SecureRandom(),
 ) : ApprovalVerifier {
     private val key = ByteArray(32).also(random::nextBytes)
-    private val outstanding = mutableSetOf<String>()
+    private val outstanding = mutableMapOf<String, ApprovalToken>()
 
     @Synchronized
     fun mint(binding: ApprovalBinding, method: ApprovalMethod, nowMs: Long): ApprovalToken {
@@ -22,13 +22,13 @@ class ApprovalTokens(
         val token = ApprovalToken(id, binding.taskId, binding.step, binding.call,
             binding.screenSignature, binding.editedFieldContents.toMap(), method,
             nowMs, expires, mac(binding, id))
-        outstanding.add(id)
+        outstanding[id] = token
         return token
     }
 
     @Synchronized
     override fun verifyAndConsume(token: ApprovalToken, current: ApprovalBinding, nowMs: Long): Boolean {
-        if (token.id !in outstanding || nowMs < token.issuedAtMs || nowMs >= token.expiresAtMs ||
+        if (outstanding[token.id] != token || nowMs < token.issuedAtMs || nowMs >= token.expiresAtMs ||
             token.expiresAtMs - token.issuedAtMs != 30_000L ||
             token.taskId != current.taskId || token.step != current.step ||
             token.call != current.call || token.screenSignature != current.screenSignature ||

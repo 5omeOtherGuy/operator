@@ -27,6 +27,10 @@ class KeyGate(private val appearedAtMs: Long) {
         downAt = null
         val duration = atMs - start
         if (duration > 2_500) return void()
+        if (duration < 1_000) {
+            eligible = true
+            return GateKeyResult.WAITING
+        }
         return if (eligible && duration >= 1_000) GateKeyResult.APPROVED else GateKeyResult.FINGERPRINT
     }
 
