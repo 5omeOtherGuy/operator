@@ -187,6 +187,8 @@ jobs:
           fi
       - name: corpus
         run: python3 tools/clm/corpus.py --states "${{ inputs.corpus_states }}" --out build/corpus.jsonl
+      - name: the reference encoder's own two paths agree (streamed vs all-weights-resident)
+        run: python3 tools/clm/ref_encoder.py --selftest
       - name: candidate E0, layer-streamed
         run: |
           set -euo pipefail
@@ -197,6 +199,7 @@ jobs:
             --corpus build/corpus.jsonl \
             --out "build/ref-${{ matrix.shard }}.npz" \
             --shard "${{ matrix.shard }}" --shards "${{ inputs.reference_shards }}" \
+            --cache-dir build/clm-cache \
             --max-text-tokens 2048 $extra
       - uses: actions/upload-artifact@v4
         with:
