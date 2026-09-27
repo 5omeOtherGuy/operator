@@ -152,15 +152,18 @@ jobs:
           set -euo pipefail
           # §7.4 step 4: copy, cut and paste are refused, so no operator source may reach for the
           # clipboard; §9.3 item 1 forbids RemoteInput on operator notifications (ADR-0015 S-08).
-          matches="$(grep -rnE 'ClipboardManager|setPrimaryClip|ACTION_COPY|ACTION_CUT|ACTION_PASTE|RemoteInput' \
+          # RemoteInput is allowed only in adapters/, which replies to OTHER apps' notifications (T0).
+          matches="$( { grep -rnE 'ClipboardManager|setPrimaryClip|ACTION_COPY|ACTION_CUT|ACTION_PASTE' \
             app/src/main agent-core/src/main --include='*.kt' --include='*.java' \
-            --include='*.xml' --include='*.aidl' || true)"
+            --include='*.xml' --include='*.aidl' || true
+            grep -rnE 'RemoteInput' app/src/main agent-core/src/main --include='*.kt' --include='*.java' \
+            --include='*.xml' --include='*.aidl' | grep -v '/dev/operator/adapters/' || true; } )"
           if [ -n "$matches" ]; then
             printf '%s\n' "$matches"
             echo "::error::FOUNDATION §7.4: no clipboard API and no RemoteInput in :app or :agent-core"
             exit 1
           fi
-          echo "S-08 clipboard rule: no clipboard API or RemoteInput in :app/src/main or agent-core/src/main"
+          echo "S-08 clipboard rule: no clipboard API; RemoteInput only under adapters/"
       - name: S-08 no INTERNET in an operator manifest
         run: |
           set -euo pipefail
