@@ -38,7 +38,7 @@ class ExecutorCoreTest {
         override suspend fun notifications() = rows
         override suspend fun takeScreenshot(): ByteArray? = null
     }
-    private class Context : PolicyContext {
+    private class Context : PolicyContext, ApprovalVerifier {
         override val allowedTools = ToolCatalog.base.keys.mapNotNull { it.simpleName }.map {
             it.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
         }.toSet() + setOf("click", "send_sms", "set_text", "read_screen")
@@ -46,6 +46,7 @@ class ExecutorCoreTest {
             "com.test.email", "com.test.social", "com.android.settings", "com.whatsapp",
             "com.google.android.gm", "com.android.chrome", "unknown.pkg", "com.android.systemui")
         override val ownerUtterance = "please do this"
+        override val taskId = "owner-task"
         override var halted = false
         override var steps = 0
         var classifier = false
@@ -59,22 +60,28 @@ class ExecutorCoreTest {
         private val key = SecretKeySpec(ByteArray(32) { (it * 3 + 7).toByte() }, "HmacSHA256")
         override fun installed(pkg: String) = true
         override fun knownNumber(number: String) = false
-        fun mint(token: ApprovalToken, args: Map<String, String>): ApprovalToken {
-            val signature = seal(token, args)
-            return token.copy(id = "${token.id}:$signature")
+        private val consumed = mutableSetOf<String>()
+        fun mint(binding: ApprovalBinding, now: Long, method: ApprovalMethod): ApprovalToken {
+            val candidate = ApprovalToken("nonce-${System.nanoTime()}", binding.taskId, binding.step,
+                binding.call, binding.screenSignature, binding.editedFieldContents, method,
+                now, now + 30_000, "")
+            return candidate.copy(mac = seal(candidate))
         }
-        override fun authentic(token: ApprovalToken, canonicalArguments: Map<String, String>): Boolean {
-            val nonce = token.id.substringBeforeLast(':', "")
-            val mac = token.id.substringAfterLast(':', "")
-            if (nonce.isEmpty() || mac.length != 64) return false
-            val expected = seal(token.copy(id = nonce), canonicalArguments)
-            return MessageDigest.isEqual(expected.toByteArray(), mac.toByteArray())
+        override fun verifyAndConsume(token: ApprovalToken, current: ApprovalBinding, nowMs: Long): Boolean {
+            if (token.id in consumed || token.mac.length != 64 || token.taskId != current.taskId ||
+                token.step != current.step || token.call != current.call ||
+                token.screenSignature != current.screenSignature ||
+                token.editedFieldContents != current.editedFieldContents ||
+                nowMs < token.issuedAtMs || nowMs >= token.expiresAtMs) return false
+            val valid = MessageDigest.isEqual(seal(token).toByteArray(), token.mac.toByteArray())
+            if (valid) consumed += token.id
+            return valid
         }
-        private fun seal(token: ApprovalToken, args: Map<String, String>): String {
-            val payload = listOf(token.id, token.call.name, token.screenSignature.toString(),
+        private fun seal(token: ApprovalToken): String {
+            val payload = listOf(token.id, token.taskId, token.step.toString(), token.call.toString(),
+                token.screenSignature.toString(),
                 token.editedFieldContents.toSortedMap(compareBy { it.hash }).toString(),
-                token.method.name, token.issuedAtMs.toString(), token.expiresAtMs.toString(),
-                args.toSortedMap().entries.joinToString("") { "${it.key.length}:${it.key}${it.value.length}:${it.value}" })
+                token.method.name, token.issuedAtMs.toString(), token.expiresAtMs.toString())
                 .joinToString("|")
             return Mac.getInstance("HmacSHA256").apply { init(key) }
                 .doFinal(payload.toByteArray()).joinToString("") { "%02x".format(it) }
@@ -90,20 +97,15 @@ class ExecutorCoreTest {
     }
     private class Gate : GatePort {
         override val armed = MutableStateFlow(true)
-        var onMint: (ApprovalToken, Map<String, String>) -> ApprovalToken = { token, _ -> token }
+        var onMint: (ApprovalBinding, Long, ApprovalMethod) -> ApprovalToken = { _, _, _ -> error("no signer") }
         var now = 100_000L
-        var current: ToolCall? = null
-        var signature: ScreenSignature? = null
-        var edited = emptyMap<ElementKey, String>()
         var token: ApprovalToken? = null
         var last: GateCard? = null
-        override suspend fun request(card: GateCard): GateResult {
+        override suspend fun request(card: GateCard, binding: ApprovalBinding): GateResult {
             last = card
-            val candidate = ApprovalToken("nonce-${System.nanoTime()}", current!!, signature!!, edited,
+            val t = onMint(binding, now,
                 if (card.riskClass == RiskClass.R3) ApprovalMethod.BIOMETRIC_STRONG else ApprovalMethod.VOLUME_HOLD,
-                now, now + 30_000)
-            val args = card.arguments.associate { it.substringBefore(": ") to it.substringAfter(": ") }
-            val t = onMint(candidate, args)
+            )
             token = t
             return GateResult.Approved(t)
         }
@@ -114,7 +116,7 @@ class ExecutorCoreTest {
         val hands = Hands(s)
         val ctx = Context()
         val gate = Gate()
-        init { gate.onMint = { token, args -> ctx.mint(token, args) } }
+        init { gate.onMint = { binding, now, method -> ctx.mint(binding, now, method) } }
         val events = mutableListOf<AuditEvent>()
         var effects = 0
         val executor = ExecutorCore(hands, object : EffectAdapter {
@@ -126,12 +128,9 @@ class ExecutorCoreTest {
         }, gate, object : AuditPort {
             override suspend fun append(event: AuditEvent) { events += event }
             override suspend fun head() = ""
-        }, clock, ctx)
+        }, clock, ctx, ctx)
         suspend fun run(call: ToolCall, approval: ApprovalToken? = null): ExecResult {
-            gate.current = call
-            gate.signature = hands.screen.screenSignature
             gate.now = clock.now
-            gate.edited = ctx.fields.orEmpty()
             val result = executor.execute(call, approval)
             if (result is ExecResult.Done && call is ToolCall.SetText) {
                 ctx.fields = ctx.fields.orEmpty() + (call.elementKey to call.text)

@@ -31,6 +31,7 @@ interface PolicyContext {
     val allowedTools: Set<String>
     val allowedPackages: Set<String>
     val ownerUtterance: String
+    val taskId: String get() = ""
     val halted: Boolean
     val steps: Int
     fun installed(pkg: String): Boolean
@@ -48,8 +49,6 @@ interface PolicyContext {
     fun appLabel(pkg: String): String? = null
     fun screenContext(snapshot: Snapshot, node: UiNode): List<String>? = null
     fun knownNumber(number: String): Boolean
-    /** Verify gate-issued MAC over nonce, task, step, canonical typed arguments, screen and edited fields. */
-    fun authentic(token: ApprovalToken, canonicalArguments: Map<String, String>): Boolean
     /** Host-only classifier; can only raise the class. */
     fun irreversible(call: ToolCall): Boolean = false
 }

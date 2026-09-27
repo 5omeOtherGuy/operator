@@ -29,6 +29,7 @@ class ExecutorCore(
     private val audit: AuditPort,
     private val clock: Clock,
     private val context: PolicyContext,
+    private val approvalVerifier: ApprovalVerifier,
     val taint: TaintTracker = TaintTracker(),
 ) : ExecutorPort {
     private val limits = RateLimits(clock)
@@ -193,6 +194,7 @@ class ExecutorCore(
             if (approval == null) {
                 val label = if (node != null) context.appLabel(node.packageName)?.takeIf { it.isNotBlank() } else null
                 val source = if (node != null && screen != null) context.screenContext(screen, node) else null
+                if (context.taskId.isBlank()) return refuse("approval_binding")
                 if (node != null && (label == null || source == null)) return refuse("card_context")
                 val pendingId = "${clock.monotonicMs()}:${pending.size}"
                 pending[pendingId] = id to risk
@@ -206,7 +208,9 @@ class ExecutorCore(
                         listOf(ApprovalMethod.VOLUME_HOLD, ApprovalMethod.BIOMETRIC_STRONG)
                     else listOf(ApprovalMethod.VOLUME_HOLD))
                 // The gate owns the UI; never treat its response as authority without token authentication.
-                when (val decision = gate.request(card)) {
+                val binding = ApprovalBinding(context.taskId, context.steps, call,
+                    (screen ?: hands.snapshot()).screenSignature, edited.toMap())
+                when (val decision = gate.request(card, binding)) {
                     is GateResult.Approved -> {
                         pending.remove(pendingId)
                         pending[decision.token.id] = id to risk
@@ -223,19 +227,25 @@ class ExecutorCore(
                 }
             }
             if (pending[approval.id] != (id to risk) || approval.id in usedTokens ||
-                !context.authentic(approval, arguments(call)) ||
+                context.taskId.isBlank() || approval.taskId != context.taskId ||
+                approval.step != context.steps ||
                 approval.call != call || approval.issuedAtMs > clock.monotonicMs() ||
                 approval.expiresAtMs <= clock.monotonicMs() || approval.expiresAtMs - approval.issuedAtMs > 30_000 ||
                 (risk == RiskClass.R3 && approval.method != ApprovalMethod.BIOMETRIC_STRONG) ||
                 approval.screenSignature != (screen ?: hands.snapshot()).screenSignature ||
                 approval.editedFieldContents != edited) return refuse("approval")
-            usedTokens += approval.id
-            pending.remove(approval.id)
             val fresh = hands.snapshot()
+            val liveFields = context.editedFieldContents(edited.keys)
             if (fresh.screenSignature != approval.screenSignature ||
                 target != null && fresh.nodes.none { it.index == target.second && it.key == target.third &&
                     it.label == node?.label && action in it.actions } ||
-                context.editedFieldContents(edited.keys) != edited) return refuse("toctou")
+                liveFields != edited) return refuse("toctou")
+            if (!approvalVerifier.verifyAndConsume(approval,
+                ApprovalBinding(context.taskId, context.steps, call, fresh.screenSignature,
+                    liveFields),
+                clock.monotonicMs())) return refuse("approval")
+            usedTokens += approval.id
+            pending.remove(approval.id)
         }
         val before = verifier.pre(call, screen)
         audit.append(AuditEvent(clock.wallMs(), AuditType.EXEC, null, context.steps, call.name,
