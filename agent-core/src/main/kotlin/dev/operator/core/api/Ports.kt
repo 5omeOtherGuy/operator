@@ -167,8 +167,11 @@ interface GatePort {
     /** §9.6: false after Disarm; the executor refuses everything while disarmed. */
     val armed: StateFlow<Boolean>
 
-    /** §9.2 item 1: block on the owner's decision for an R2/R3 call. */
-    suspend fun request(card: GateCard): GateResult
+    /**
+     * §9.2 item 1: block on the owner's decision for an R2/R3 call. An [GateResult.Approved] token is
+     * minted over exactly [binding] (§9.2 item 5).
+     */
+    suspend fun request(card: GateCard, binding: ApprovalBinding): GateResult
 
     /** §9.6: Stop, kill or Disarm voids every pending approval. */
     suspend fun cancelPending()

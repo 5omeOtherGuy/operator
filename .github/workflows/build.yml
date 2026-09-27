@@ -154,7 +154,7 @@ jobs:
           # clipboard; §9.3 item 1 forbids RemoteInput on operator notifications (ADR-0015 S-08).
           # RemoteInput is allowed only in adapters/, which replies to OTHER apps' notifications (T0).
           matches="$( { grep -rnE 'ClipboardManager|setPrimaryClip|ACTION_COPY|ACTION_CUT|ACTION_PASTE' \
-            app/src/main agent-core/src/main --include='*.kt' --include='*.java' \
+            app/src agent-core/src/main --include='*.kt' --include='*.java' \
             --include='*.xml' --include='*.aidl' || true
             grep -rnE 'RemoteInput' app/src/main agent-core/src/main --include='*.kt' --include='*.java' \
             --include='*.xml' --include='*.aidl' | grep -v '/dev/operator/adapters/' || true; } )"
@@ -164,6 +164,14 @@ jobs:
             exit 1
           fi
           echo "S-08 clipboard rule: no clipboard API; RemoteInput only under adapters/"
+      - name: S-08 never-compiled APIs (wipeData, ADB settings)
+        run: |
+          set -euo pipefail
+          # §9.4 and the owner's constraint: wipeData is never reachable; no DO ADB_* global settings (§0.1 item 1).
+          matches="$(grep -rnE 'wipeData|wipeDevice|ADB_ENABLED|ADB_WIFI_ENABLED' app/src agent-core/src llm/src llm-stub/src \
+            --include='*.kt' --include='*.java' --include='*.xml' --include='*.aidl' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(\*|//|/\*)' || true)"
+          if [ -n "$matches" ]; then printf '%s\n' "$matches"; echo "::error::wipeData/ADB settings must never be compiled in"; exit 1; fi
+          echo "S-08 never-compiled rule: no wipeData, wipeDevice or ADB_* settings"
       - name: S-08 no INTERNET in an operator manifest
         run: |
           set -euo pipefail
