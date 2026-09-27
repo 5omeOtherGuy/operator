@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">operator</string>
+
+    <string name="service_screen">operator hands</string>
+    <string name="service_screen_description">operator reads the screen of the apps it operates for you and performs taps, text entry and scrolling on your behalf. It never uses the internet: the on-device model runs on this phone.</string>
+    <string name="service_screen_summary">Reads and operates the screen for the tasks you give it.</string>
+    <string name="service_notification_listener">operator notifications</string>
+    <string name="service_settings">operator settings</string>
+
+    <string name="command_screen_stub">operator command screen (S11 builds it)</string>
+    <string name="settings_screen_stub">operator settings (S11 builds it)</string>
+</resources>

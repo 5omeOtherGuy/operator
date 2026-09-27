@@ -1,0 +1,40 @@
+# Single version catalog for the operator build (F0 owns this file; slices append only with a lead decision).
+# AGP, Kotlin and the NDK follow third_party/llama.cpp/examples/llama.android at 9588757 (FOUNDATION §4.2, ADR-0005).
+[versions]
+agp = "8.13.2"
+kotlin = "2.3.0"
+ndk = "29.0.13113456"
+
+# AndroidX
+core-ktx = "1.17.0"
+datastore-preferences = "1.2.0"
+lifecycle-service = "2.8.7"
+biometric = "1.1.0"
+
+# Kotlin libraries
+coroutines = "1.10.2"
+serialization-json = "1.8.0"
+
+# Testing
+androidx-junit = "1.3.0"
+junit = "4.13.2"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+jetbrains-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore-preferences" }
+androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycle-service" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
+
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization-json" }
+
+kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-junit" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
