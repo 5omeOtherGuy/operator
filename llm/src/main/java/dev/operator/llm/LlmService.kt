@@ -453,12 +453,13 @@ private class NativeModelEngine(
         if (sourceLength == prompt.size) sourceLength--
         require(sourceLength >= 0)
         val suffix = prompt.copyOfRange(sourceLength, prompt.size)
+        val branch = if (request.sequenceId == SOURCE_SEQUENCE) 1 else request.sequenceId
         activeRequests += request.id
         try {
             check(!abortedRequests.remove(request.id)) { "request_aborted" }
             labels.map { label ->
                 OperatorNative.labelLogits(
-                    contextHandle, SOURCE_SEQUENCE, request.sequenceId, sourceLength, suffix, label,
+                    contextHandle, SOURCE_SEQUENCE, branch, sourceLength, suffix, label,
                 )
             }
         } finally {
