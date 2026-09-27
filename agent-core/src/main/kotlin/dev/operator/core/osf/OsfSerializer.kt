@@ -53,14 +53,11 @@ class OsfSerializer(
 
     /** The §6.2 `SCREEN … END` block for [snapshot]. */
     fun screen(snapshot: Snapshot): String {
-        val keptWindows =
-            snapshot.windows.filter { it.type !in DROPPED_WINDOW_TYPES && it.packageName != operatorPackage }
-        val primary = keptWindows.firstOrNull { it.active } ?: keptWindows.firstOrNull()
-        val droppedPositions = ownNotificationSubtrees(snapshot)
+        val view = View(snapshot)
         val lines = ArrayList<Line>(snapshot.nodes.size + 4)
-        lines.add(Line(screenHeader(snapshot, primary), protectedFromTrim = true))
+        lines.add(Line(screenHeader(snapshot, view.primary), protectedFromTrim = true))
 
-        for (w in keptWindows) {
+        for (w in view.keptWindows) {
             if (w.packageName in denylistedPackages) {
                 // §6.1 rule 8: the window and everything identifying its subpage are omitted,
                 // only the placeholder is rendered.
@@ -68,10 +65,9 @@ class OsfSerializer(
                 continue
             }
             if (w.rootNodeIndex == null) continue
-            if (primary != null && w.id != primary.id) lines.add(Line(windowHeader(w), protectedFromTrim = true))
-            for (pos in snapshot.nodes.indices) {
-                val node = snapshot.nodes[pos]
-                if (node.windowId != w.id || pos in droppedPositions) continue
+            if (view.primary != null && w.id != view.primary.id) lines.add(Line(windowHeader(w), protectedFromTrim = true))
+            for ((pos, node) in view.visible) {
+                if (node.windowId != w.id) continue
                 lines.add(elementLine(node, snapshot.nodes, pos) ?: continue)
             }
         }
@@ -84,6 +80,9 @@ class OsfSerializer(
     /**
      * The §6.1 rule 11 `CHANGES` block after an action: `+` new, `-` gone, `~` changed label or
      * flags, matched by element key, at most [MAX_DIFF_LINES] lines then `…`.
+     *
+     * Review fix 1: the diff sees exactly what screen() sees — the same [View] filters (kept
+     * windows, denylist, own-notification rows) apply to both snapshots.
      */
     fun changes(prev: Snapshot, curr: Snapshot, verb: String, actedNumber: Int? = null): String {
         val header = StringBuilder("CHANGES s").append(prev.id).append("->s").append(curr.id)
@@ -91,12 +90,14 @@ class OsfSerializer(
         actedNumber?.let { header.append(" [").append(it).append("]") }
         header.append(":")
 
-        val prevByKey = HashMap<dev.operator.core.api.ElementKey, UiNode>(prev.nodes.size)
-        for (n in prev.nodes) if (n.key !in prevByKey) prevByKey[n.key] = n
-        val currKeys = curr.nodes.mapTo(HashSet()) { it.key }
+        val prevView = View(prev)
+        val currView = View(curr)
+        val prevByKey = HashMap<dev.operator.core.api.ElementKey, UiNode>(prevView.visible.size)
+        for ((_, n) in prevView.visible) if (n.key !in prevByKey) prevByKey[n.key] = n
+        val currKeys = currView.visible.mapTo(HashSet()) { it.second.key }
 
         val body = ArrayList<String>()
-        for ((pos, node) in curr.nodes.withIndex()) {
+        for ((pos, node) in currView.visible) {
             val old = prevByKey[node.key]
             if (old == null) {
                 elementLine(node, curr.nodes, pos)?.let { body.add("+" + it.text) }
@@ -105,16 +106,20 @@ class OsfSerializer(
             val newLabel = diffLabel(node)
             val oldLabel = diffLabel(old)
             if (newLabel != oldLabel) {
-                body.add(
-                    "~[${node.index}] ${roleToken(node.role)} \"${renderPart(newLabel, OsfText.MAX_EDIT_CHARS)}\" " +
-                        "(was \"${renderPart(oldLabel, OsfText.MAX_EDIT_CHARS)}\")",
-                )
+                // Review fix 2: a password field's text never renders, in either state.
+                val newShown =
+                    if (NodeState.PASSWORD in node.state) passwordMarker(node)
+                    else "\"${renderPart(newLabel, OsfText.MAX_EDIT_CHARS)}\""
+                val oldShown =
+                    if (NodeState.PASSWORD in old.state) passwordMarker(old)
+                    else "\"${renderPart(oldLabel, OsfText.MAX_EDIT_CHARS)}\""
+                body.add("~[${node.index}] ${roleToken(node.role)} $newShown (was $oldShown)")
             }
             flagDelta(old, node)?.let { delta ->
                 body.add("~[${node.index}] ${roleToken(node.role)}${flagLineLabelPart(node)} $delta")
             }
         }
-        for ((pos, old) in prev.nodes.withIndex()) {
+        for ((pos, old) in prevView.visible) {
             if (old.key !in currKeys) {
                 elementLine(old, prev.nodes, pos)?.let { body.add("-" + it.text) }
             }
@@ -128,14 +133,18 @@ class OsfSerializer(
     // --------------------------------------------------------------------- headers
 
     private fun screenHeader(snapshot: Snapshot, primary: WindowInfo?): String {
-        val pkg = snapshot.screenSignature.packageName
-        val denyPrimary = primary != null && primary.packageName in denylistedPackages
+        // Review fix 7: the header names the top kept window only — an excluded foreground window
+        // (the operator gate, an overlay) is never named, and with no kept window at all, no
+        // package, app or title is emitted.
         val sb = StringBuilder("SCREEN s").append(snapshot.id)
-        sb.append(" app=\"").append(escapeTitle(appLabels[pkg] ?: pkg)).append("\"")
-        sb.append(" pkg=").append(pkg)
-        if (primary != null) sb.append(" win=").append(windowToken(primary.type))
-        if (!denyPrimary) {
-            snapshot.screenSignature.windowTitle?.let { sb.append(" title=\"").append(escapeTitle(it)).append("\"") }
+        if (primary != null) {
+            val denyPrimary = primary.packageName in denylistedPackages
+            sb.append(" app=\"").append(escapeTitle(appLabels[primary.packageName] ?: primary.packageName)).append("\"")
+            sb.append(" pkg=").append(primary.packageName)
+            sb.append(" win=").append(windowToken(primary.type))
+            if (!denyPrimary) {
+                primary.title?.let { sb.append(" title=\"").append(escapeTitle(it)).append("\"") }
+            }
         }
         if (snapshot.keyboardUp) sb.append(" kbd=up")
         snapshot.focusedIndex?.let { sb.append(" focus=").append(it) }
@@ -251,6 +260,9 @@ class OsfSerializer(
         return node.label
     }
 
+    /** Review fix 2: only the length of a password field's content is model-visible. */
+    private fun passwordMarker(n: UiNode): String = "(password field, ${n.label.length} chars)"
+
     private fun flagLineLabelPart(node: UiNode): String {
         if (NodeState.PASSWORD in node.state) return ""
         val label = diffLabel(node)
@@ -274,12 +286,35 @@ class OsfSerializer(
         return if (deltas.isEmpty()) null else deltas.joinToString(", ")
     }
 
+    // --------------------------------------------------------------------- shared view (review fix 1)
+
+    /**
+     * One filtered view of a snapshot, feeding both screen() and changes(): kept windows
+     * (excluded window types and operator's own package dropped), denylisted windows held apart
+     * for the placeholder, and own-notification rows removed from the node list.
+     */
+    private inner class View(val snapshot: Snapshot) {
+        val keptWindows = snapshot.windows.filter {
+            it.type !in DROPPED_WINDOW_TYPES && it.packageName != operatorPackage
+        }
+        val primary: WindowInfo? = keptWindows.firstOrNull { it.active } ?: keptWindows.firstOrNull()
+        private val denylistedIds = keptWindows.filter { it.packageName in denylistedPackages }.mapTo(HashSet()) { it.id }
+        private val renderedIds: Set<Int> = keptWindows.mapTo(HashSet()) { it.id } - denylistedIds
+        private val dropped: Set<Int> = ownNotificationSubtrees(snapshot)
+
+        /** (position, node) pairs the model may see, in emission order. */
+        val visible: List<Pair<Int, UiNode>> = snapshot.nodes.withIndex()
+            .filter { (i, n) -> n.windowId in renderedIds && i !in dropped }
+            .map { it.index to it.value }
+    }
+
     // --------------------------------------------------------------------- own notifications
 
     /**
-     * §6.1 rule 1: shade and heads-up rows matching one of operator's active notifications, plus
-     * their action buttons and reply fields (their whole subtree), are dropped. Any match drops
-     * (ambiguous matches fail safe).
+     * §6.1 rule 1, review fix 3: shade and heads-up rows matching one of operator's active
+     * notifications are dropped whole — a match climbs to its containing row (the highest
+     * ancestor strictly below the window root or a list node), so the row's action buttons and
+     * inline reply field die with it. Any match drops (ambiguous matches fail safe).
      */
     private fun ownNotificationSubtrees(snapshot: Snapshot): Set<Int> {
         if (ownNotifications.isEmpty()) return emptySet()
@@ -289,13 +324,18 @@ class OsfSerializer(
             .toHashSet()
         if (matchers.isEmpty()) return emptySet()
 
+        val nodes = snapshot.nodes
         val childrenOf = HashMap<Int, MutableList<Int>>()
-        snapshot.nodes.forEachIndexed { i, n -> n.parentIndex?.let { childrenOf.getOrPut(it) { ArrayList() }.add(i) } }
+        nodes.forEachIndexed { i, n -> n.parentIndex?.let { childrenOf.getOrPut(it) { ArrayList() }.add(i) } }
+        val rootOf = HashMap<Int, Int?>()
+        for (w in snapshot.windows) rootOf[w.id] = w.rootNodeIndex
 
         val dropped = HashSet<Int>()
         val stack = ArrayDeque<Int>()
-        snapshot.nodes.forEachIndexed { i, n ->
-            if (OsfText.labelParts(n.label).any { it.trim() in matchers }) stack.addLast(i)
+        nodes.forEachIndexed { i, n ->
+            if (OsfText.labelParts(n.label).any { it.trim() in matchers }) {
+                stack.addLast(rowTop(nodes, i, rootOf[n.windowId]))
+            }
         }
         while (stack.isNotEmpty()) {
             val i = stack.removeLast()
@@ -303,6 +343,19 @@ class OsfSerializer(
             childrenOf[i]?.let { stack.addAll(it) }
         }
         return dropped
+    }
+
+    /** The containing row of [pos]: the highest ancestor strictly below the window root or a list. */
+    private fun rowTop(nodes: List<UiNode>, pos: Int, rootPos: Int?): Int {
+        var top = pos
+        var p = nodes[pos].parentIndex
+        while (p != null && p in nodes.indices) {
+            if (p == rootPos) break
+            if (nodes[p].role == Role.LIST) break
+            top = p
+            p = nodes[p].parentIndex
+        }
+        return top
     }
 
     // --------------------------------------------------------------------- budget (§6.1 rule 9)

@@ -37,6 +37,10 @@ object OsfKeys {
      * the identity and the volatile label is not hashed — otherwise the typed text of [9] would change its
      * key and the diff could not show `~`. The normalised label is hashed only for id-less nodes (web and
      * Flutter fallbacks, §6.4), where it is the identity the design gives them.
+     *
+     * [ordinal] disambiguates id-less siblings that share parent, role and label (review fix 5): the
+     * node's 0-based position among them in tree order. Hashed only for id-less nodes, always (0 for a
+     * singleton), so keys stay unique within a snapshot and stable across snapshots.
      */
     fun elementKey(
         packageName: String,
@@ -48,6 +52,7 @@ object OsfKeys {
         row: Int?,
         column: Int?,
         label: String,
+        ordinal: Int = 0,
     ): ElementKey {
         val h = Hash64()
         h.putString("osf-key-v1")
@@ -60,7 +65,10 @@ object OsfKeys {
         idAncestorPath.forEach { h.putString(it) }
         h.putLong(row?.toLong() ?: -1L)
         h.putLong(column?.toLong() ?: -1L)
-        if (uniqueId == null && viewId == null) h.putString(normalisedLabel(label))
+        if (uniqueId == null && viewId == null) {
+            h.putString(normalisedLabel(label))
+            h.putLong(ordinal.toLong())
+        }
         return ElementKey(h.finalise())
     }
 
@@ -98,42 +106,85 @@ object OsfKeys {
 
 /**
  * §6.1 rule 10: numbering is sticky while the screen signature holds (package + title + ≥60 % key
- * overlap). A persisting key keeps its number, a new key gets max+1, a removed key's number is
- * retired (never reused inside the epoch); when the signature changes, numbering restarts at 1.
+ * overlap). A persisting key keeps its number, a new key gets max+1, and — review fix 6 — the
+ * epoch keeps a monotonically increasing high-water counter, so a number is never reused within
+ * an epoch even after its node disappears. When the signature changes, numbering restarts at 1
+ * in a fresh epoch.
+ *
+ * The counter cannot be recovered from a [Snapshot] alone (a snapshot does not record retired
+ * numbers), so the caller threads [Numbering] from snapshot to snapshot — [OsfSnapshots.buildBuilt]
+ * is the assembly path that does it; [assign] with a bare `prev` snapshot is the lossy fallback.
  */
 object StickyNumbering {
 
     const val MIN_KEY_OVERLAP = 0.6
 
+    /** The numbers of one snapshot plus the epoch's high-water mark and signature. */
+    data class Numbering(
+        val packageName: String,
+        val windowTitle: String?,
+        val numbers: Map<dev.operator.core.api.ElementKey, Int>,
+        val highWater: Int,
+    )
+
+    /** Numbers in [keysInOrder] order, plus the state to thread into the next snapshot. */
+    data class Assignment(val numbers: List<Int>, val numbering: Numbering)
+
     fun numberingHolds(prev: Snapshot, curr: Snapshot): Boolean =
-        numberingHolds(prev, curr.screenSignature.packageName, curr.screenSignature.windowTitle, curr.nodes.map { it.key })
+        numberingHolds(numberingOf(prev), curr.screenSignature.packageName, curr.screenSignature.windowTitle, curr.nodes.map { it.key })
 
     /**
      * Overlap is |prev ∩ curr| / max(|prev|, |curr|): the fraction of the larger key set that
      * persists (the design's "≥60 % key overlap" without a denominator; this reading keeps a
      * growing list sticky).
      */
-    fun numberingHolds(prev: Snapshot, currPackage: String, currWindowTitle: String?, currKeys: List<ElementKey>): Boolean {
-        if (prev.screenSignature.packageName != currPackage) return false
-        if (prev.screenSignature.windowTitle != currWindowTitle) return false
-        val a = prev.nodes.mapTo(HashSet()) { it.key }
+    fun numberingHolds(prev: Numbering, currPackage: String, currWindowTitle: String?, currKeys: List<dev.operator.core.api.ElementKey>): Boolean {
+        if (prev.packageName != currPackage) return false
+        if (prev.windowTitle != currWindowTitle) return false
+        val a = prev.numbers.keys
         val b = currKeys.toHashSet()
         if (a.isEmpty() && b.isEmpty()) return true
         val denom = maxOf(a.size, b.size)
         return a.intersect(b).size.toDouble() / denom >= MIN_KEY_OVERLAP
     }
 
-    /** Returns the model number for each key, in the order given. */
-    fun assign(prev: Snapshot?, currPackage: String, currWindowTitle: String?, keysInOrder: List<ElementKey>): List<Int> {
+    /** Lossy derivation from a bare snapshot: retired numbers are unknowable from it alone. */
+    fun numberingOf(snapshot: Snapshot): Numbering = Numbering(
+        packageName = snapshot.screenSignature.packageName,
+        windowTitle = snapshot.screenSignature.windowTitle,
+        numbers = snapshot.nodes.groupBy({ it.key }, { it.index }).mapValues { (_, v) -> v.first() },
+        highWater = snapshot.nodes.maxOfOrNull { it.index } ?: 0,
+    )
+
+    /** Legacy convenience over a bare previous snapshot; prefer [assignNumbering]. */
+    fun assign(prev: Snapshot?, currPackage: String, currWindowTitle: String?, keysInOrder: List<dev.operator.core.api.ElementKey>): List<Int> =
+        assignNumbering(prev?.let { numberingOf(it) }, currPackage, currWindowTitle, keysInOrder).numbers
+
+    /** The fixed path: threads the epoch counter, never reuses a number within an epoch. */
+    fun assignNumbering(
+        prev: Numbering?,
+        currPackage: String,
+        currWindowTitle: String?,
+        keysInOrder: List<dev.operator.core.api.ElementKey>,
+    ): Assignment {
         if (prev == null || !numberingHolds(prev, currPackage, currWindowTitle, keysInOrder)) {
-            return List(keysInOrder.size) { it + 1 }
+            val fresh = List(keysInOrder.size) { it + 1 }
+            return Assignment(fresh, Numbering(currPackage, currWindowTitle, keysInOrder.zip(fresh).toMap(), fresh.size))
         }
-        val prevNumbers = HashMap<ElementKey, Int>(prev.nodes.size)
-        for (n in prev.nodes) if (n.key !in prevNumbers) prevNumbers[n.key] = n.index
-        var next = prevNumbers.values.maxOrNull() ?: 0
+        val numbers = HashMap<dev.operator.core.api.ElementKey, Int>(prev.numbers)
+        var highWater = maxOf(prev.highWater, prev.numbers.values.maxOrNull() ?: 0)
         val out = ArrayList<Int>(keysInOrder.size)
-        for (k in keysInOrder) out.add(prevNumbers[k] ?: ++next)
-        return out
+        for (k in keysInOrder) {
+            val kept = prev.numbers[k]
+            if (kept != null) {
+                out.add(kept)
+            } else {
+                highWater += 1
+                out.add(highWater)
+                numbers[k] = highWater
+            }
+        }
+        return Assignment(out, Numbering(currPackage, currWindowTitle, numbers, highWater))
     }
 }
 

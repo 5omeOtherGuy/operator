@@ -32,7 +32,7 @@ class PoorTreeDetectorTest {
 
     @Test
     fun `a blank snapshot is not poor`() {
-        assertNull(PoorTree.detect(Tree.snapshot(nodes = emptyList())))
+        assertNull(PoorTree.detect(Tree.snapshot(nodes = emptyList(), windows = emptyList())))
     }
 
     @Test

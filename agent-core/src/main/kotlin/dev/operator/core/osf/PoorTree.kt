@@ -43,7 +43,12 @@ object PoorTree {
     /** Null when the tree is not poor. Checks run in the order [04§R5] lists them. */
     fun detect(snapshot: Snapshot): PoorTreeReason? {
         val nodes = snapshot.nodes
-        if (nodes.isEmpty()) return null // blank, not poor
+        if (nodes.isEmpty()) {
+            // Review Medium: a visible window that emitted no nodes is non-blank but empty —
+            // unreadable for the model, so poor. A snapshot with no windows at all is blank.
+            return if (snapshot.windows.isEmpty()) null
+            else PoorTreeReason.TooFewLabelledActionables(labelled = 0)
+        }
 
         val actionables = nodes.filter { it.actions.isNotEmpty() }
         val labelled = actionables.count { !it.label.isBlank() }

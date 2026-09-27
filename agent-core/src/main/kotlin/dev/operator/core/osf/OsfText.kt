@@ -55,9 +55,11 @@ object OsfText {
     /**
      * §6.1 rule 1b: one-time codes are redacted in every source. An OTP-like span becomes
      * `‹code›`:
-     *  - a standalone run of 4–8 digits, unless it sits in a phone-number context (a run directly
-     *    preceded by `+`, or a chain of two or more digit groups separated by single spaces or
-     *    dashes — the phone context is what keeps the §6.2 golden `+49 151 0000000` intact);
+     *  - a standalone run of 4–8 digits, unless the whole token it sits in looks like a phone
+     *    number: a chain of digit groups (single spaces or dashes) that starts with `+`, or has at
+     *    least two groups and starts with a `0` group (national prefix). A mere neighbouring
+     * digit group is not a phone number — `482913 2` redacts. This is what keeps the §6.2 golden
+     * `+49 151 0000000` intact while codes die;
      *  - a 4–8 character alphanumeric token containing both a digit and a letter, with a cue word
      *    (code, otp, pin, tan, bestätigungscode — case-insensitive) within 24 characters on either
      *    side.
@@ -68,14 +70,16 @@ object OsfText {
 
         val runs = DIGIT_RUN.findAll(text).map { it.range }.toList()
         if (runs.isNotEmpty()) {
-            // Group consecutive digit runs into phone-context chains.
+            // Group consecutive digit runs into chains, then keep only phone-shaped chains.
             val phone = BooleanArray(runs.size)
             var i = 0
             while (i < runs.size) {
                 var j = i
                 while (j + 1 < runs.size && isPhoneGap(text, runs[j].last + 1, runs[j + 1].first)) j++
-                val hasPlus = (i..j).any { k -> runs[k].first > 0 && text[runs[k].first - 1] == '+' }
-                if (j > i || hasPlus) for (k in i..j) phone[k] = true
+                val startsWithPlus = runs[i].first > 0 && text[runs[i].first - 1] == '+'
+                val startsWithZero = text[runs[i].first] == '0'
+                val phoneShaped = startsWithPlus || (j > i && startsWithZero)
+                if (phoneShaped) for (k in i..j) phone[k] = true
                 i = j + 1
             }
             for (k in runs.indices) {

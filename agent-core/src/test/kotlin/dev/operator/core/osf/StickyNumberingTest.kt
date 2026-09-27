@@ -44,7 +44,12 @@ class StickyNumberingTest {
     @Test
     fun `a package or title change restarts numbering`() {
         val s1 = Tree.snapshot(listOf(btn("A"), btn("B")))
-        val otherApp = Tree.snapshot(listOf(btn("A"), btn("B")), pkg = "com.other.app", prev = s1)
+        val otherApp = Tree.snapshot(
+            listOf(btn("A"), btn("B")),
+            windows = listOf(Tree.window(pkg = "com.other.app", title = "Other")),
+            pkg = "com.other.app",
+            prev = s1,
+        )
         assertEquals(listOf(1, 2), otherApp.nodes.map { it.index })
         assertFalse(StickyNumbering.numberingHolds(s1, otherApp))
 

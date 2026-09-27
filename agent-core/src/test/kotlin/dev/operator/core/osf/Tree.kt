@@ -15,6 +15,13 @@ object Tree {
     const val PKG = "com.example.app"
     const val OPERATOR = "dev.operator"
 
+    /**
+     * Numbering state of the snapshots this helper built, threaded like the production reader
+     * does through [OsfSnapshots.buildBuilt] (review fix 6). Keyed by identity, not equality:
+     * structurally equal snapshots can belong to different epochs.
+     */
+    private val numberings = java.util.IdentityHashMap<Snapshot, StickyNumbering.Numbering>()
+
     fun key(
         label: String,
         role: Role = Role.BTN,
@@ -78,14 +85,19 @@ object Tree {
         keyboardUp: Boolean = false,
         focusedNumber: Int? = null,
         prev: Snapshot? = null,
-    ): Snapshot = OsfSnapshots.build(
-        id = id,
-        capturedAtMs = id * 1_000L,
-        foregroundPackage = pkg,
-        windows = windows,
-        nodes = nodes,
-        keyboardUp = keyboardUp,
-        focusedNumber = focusedNumber,
-        prev = prev,
-    )
+    ): Snapshot {
+        val built = OsfSnapshots.buildBuilt(
+            id = id,
+            capturedAtMs = id * 1_000L,
+            foregroundPackage = pkg,
+            windows = windows,
+            nodes = nodes,
+            keyboardUp = keyboardUp,
+            focusedNumber = focusedNumber,
+            prev = prev,
+            prevNumbering = prev?.let { numberings[it] }, // thread the epoch when this helper built prev
+        )
+        numberings[built.snapshot] = built.numbering
+        return built.snapshot
+    }
 }
