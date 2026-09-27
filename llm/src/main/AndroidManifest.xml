@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ADR-0002, FOUNDATION §2.1, §2.3: :llm owns the native inference engine and its service runs in
      its own process, ":llm", so a native crash or an LMK kill of the model does not touch the
-     accessibility host process. F0 carries no service class here: dev and prod get the placeholder
-     service from :llm-stub (see llm/build.gradle.kts), and S1 replaces that dependency with the real
-     <service android:name="dev.operator.llm.LlmService" android:exported="false"
-     android:process=":llm"/> declared in this manifest.
+     accessibility host process. Dev and prod use the native LlmService declared below; the
+     emulatorStub channel binds the Kotlin-only implementation in :llm-stub instead.
      Same UID and app id as dev.operator. No INTERNET permission here (§4.8, C12). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
