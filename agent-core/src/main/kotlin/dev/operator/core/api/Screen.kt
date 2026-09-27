@@ -35,8 +35,9 @@ enum class Role { BTN, TXT, EDIT, SWITCH, CHK, RADIO, TAB, LIST, WEB, LINK, IMG,
 
 /**
  * Actionable capabilities of a node, as the executor checks them (§7.4 step 4: "the element exists,
- * is visible and enabled, and supports the action"). `ACTION_COPY`, `ACTION_CUT` and `ACTION_PASTE`
- * are F-class and deliberately absent (§7.2, S-08).
+ * is visible and enabled, and supports the action"). The clipboard actions of §7.2's F row are
+ * deliberately absent here and everywhere else (§7.2, §7.4 step 4: copy, cut and paste are refused;
+ * S-08 fails the build on them).
  */
 enum class NodeAction {
     CLICK, LONG_CLICK, SET_TEXT, SCROLL_FORWARD, SCROLL_BACKWARD,

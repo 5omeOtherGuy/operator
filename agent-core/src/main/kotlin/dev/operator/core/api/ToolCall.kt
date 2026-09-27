@@ -271,8 +271,9 @@ sealed interface ToolCall {
 
 /**
  * Outcome of one [ToolCall], §7.5 (`Ok | Failed | Unverified | Refused | NeedsConfirmation |
- * Cancelled`, narrowed to the four states M1 needs). `Ok` requires positive evidence; the return
- * value of a node action alone never counts (§7.5).
+ * Cancelled`), one state per §7.5 name: [Done], [Failed], [Unverified], [Refused],
+ * [NeedsApproval], [Cancelled]. `Ok` requires positive evidence; the return value of a node action
+ * alone never counts (§7.5).
  */
 sealed interface ExecResult {
     /** §7.5 `Ok`: the post-check produced positive evidence (described in [evidence]). */

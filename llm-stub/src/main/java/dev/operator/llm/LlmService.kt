@@ -6,12 +6,14 @@ import android.os.IBinder
 import android.util.Log
 
 /**
- * F0 stub of the `:llm` service (FOUNDATION §2.3, §4; ADR-0002, ADR-0005).
+ * F0 stub of the `:llm` service for the emulator channel (FOUNDATION §2.3, §4.2 R25, §12;
+ * ADR-0002, ADR-0005).
  *
  * It is declared in this library's manifest, in its own process `:llm`, and answers every AIDL call
  * with `onError("not implemented: <call>")` through the callback. [pid], [stats] and [bench] answer
- * directly because §2.3 has no callback for them. S1 replaces the body with the real inference
- * engine; the AIDL surface of `:llm-api` and the process declaration stay unchanged.
+ * directly because §2.3 has no callback for them. S1 replaces the body with the scripted fixtures
+ * the emulator tests drive; the AIDL surface of `:llm-api` and the process declaration stay
+ * unchanged, and `:app`'s dev/prod channels keep binding to the real `:llm`.
  */
 class LlmService : Service() {
 
