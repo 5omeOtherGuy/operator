@@ -9,8 +9,13 @@ Status: planning. No code yet.
 - **Model:** PrismML Bonsai (1-bit / ternary GGUF) served by llama.cpp on the phone. Upstream llama.cpp supports Q1_0 and Q2_0. Start with Bonsai 8B (1.2 GB) and try 27B (3.9 GB) where RAM allows.
 - **Hands:** an accessibility service in the operator app. It reads the screen as a node tree, performs taps, swipes, text entry and global actions (Back, Home, notifications), and takes screenshots. It stays enabled across reboots with no USB or wireless debugging.
 - **Keeping it on:** a one-time `adb shell pm grant <app> android.permission.WRITE_SECURE_SETTINGS` lets the app re-enable its own accessibility service when the OEM switches it off. The grant survives reboots.
-- **Shell-level actions (optional):** Shizuku 13.6+ auto-starts without root on Android 13+ when the phone is on a trusted Wi-Fi network.
-- **No root.** Root would keep the bootloader unlocked, break Play Integrity and need re-patching after every OTA.
+- **Direct APIs first:** alarms, timers, calendar, calls, SMS, media and app launching go through the ordinary Android intents and permissions. A notification listener reads and answers notifications. The accessibility UI path is the fallback for everything else.
+- **Admin:** the operator app is the **device owner** (`dpm set-device-owner`). It installs and uninstalls APKs silently, grants runtime permissions, hides or suspends apps, and sets restrictions, reboots and update policy. Setting it requires no accounts and no secondary users on the device (Android 14+). Remove the accounts and the App Cloner user first, then add them back. Development builds are `android:testOnly="true"` so `adb shell dpm remove-active-admin` can undo it. `wipeData` is never exposed to the model.
+- **Not used:** Shizuku (needs re-activation or Wi-Fi at boot) and root (keeps the bootloader unlocked, breaks Play Integrity, needs re-patching after every OTA).
+
+## Decisions
+
+- 2026-09-27: control stack = accessibility service + one-time `WRITE_SECURE_SETTINGS` grant + device owner. No Shizuku, no root.
 
 ## Safety
 
@@ -21,5 +26,6 @@ The model reads untrusted text: web pages, notifications, messages. Any action t
 1. Termux: llama.cpp `llama-server` with Bonsai 8B on localhost. Measure tokens/s and check that tool calls are reliable.
 2. A minimal app with an accessibility service exposing `read_screen`, `tap`, `type`, `swipe`, `back`, `home`, `open_app`.
 3. An agent loop between them, with the confirmation gate.
+4. Device owner: move the admin actions (install, uninstall, permissions) from the UI path to `DevicePolicyManager`.
 
 Reference device: OnePlus 13 (SM8750, 16 GB RAM), OxygenOS 16.
