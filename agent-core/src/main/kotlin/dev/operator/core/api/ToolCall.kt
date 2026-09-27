@@ -286,6 +286,12 @@ sealed interface ExecResult {
 
     /** §9.2 item 1: the executor blocks on the gate; [pendingId] identifies the pending approval. */
     data class NeedsApproval(val pendingId: String) : ExecResult
+
+    /** §7.5: the action ran but the post-check could neither confirm nor rule out the effect. */
+    data class Unverified(val evidence: String, val reason: String) : ExecResult
+
+    /** §9.6: the task was stopped (soft stop, disarm, halted) or the owner declined at the gate. */
+    data class Cancelled(val reason: String) : ExecResult
 }
 
 /** How an approval was given: §9.2 item 3 (hold) and item 4 (hold + fingerprint). The audit log records which (§9.5). */
