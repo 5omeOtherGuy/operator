@@ -52,6 +52,8 @@ jobs:
           test -x "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" || { echo "::error::CMake $OPERATOR_CMAKE_VERSION missing"; exit 1; }
           "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" --version
       - name: Configure llama.cpp for android arm64 (§4.2 flags)
+        # tools/cli links llama-server-impl and is gated behind LLAMA_BUILD_SERVER
+        # (tools/CMakeLists.txt); only the llama-bench + llama-cli targets are built next.
         run: |
           set -euo pipefail
           cmake -S third_party/llama.cpp -B build -G Ninja \
@@ -72,8 +74,6 @@ jobs:
             -DLLAMA_BUILD_TOOLS=ON \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
-            # tools/cli links llama-server-impl and is gated behind LLAMA_BUILD_SERVER
-            # (tools/CMakeLists.txt); only the llama-bench + llama-cli targets are built below.
             -DLLAMA_BUILD_SERVER=ON
       # Only the two targets stage 0 needs; the rest of tools/ stays unbuilt.
       - name: Build llama-bench and llama-cli
