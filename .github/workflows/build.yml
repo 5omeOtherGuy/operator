@@ -88,7 +88,9 @@ jobs:
           test -d "$ANDROID_HOME" || { echo "::error::Android SDK not found at $ANDROID_HOME"; exit 1; }
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           [ -x "$SDKMANAGER" ] || SDKMANAGER="$(command -v sdkmanager)"
-          yes | "$SDKMANAGER" --install "ndk;$OPERATOR_NDK_VERSION" "cmake;$OPERATOR_CMAKE_VERSION" > /dev/null
+          # `yes` answers the licence prompts; it dies with SIGPIPE once sdkmanager is done, which
+          # `|| true` absorbs — the checks below are what decide success.
+          yes | "$SDKMANAGER" --install "ndk;$OPERATOR_NDK_VERSION" "cmake;$OPERATOR_CMAKE_VERSION" > /dev/null || true
           test -d "$ANDROID_HOME/ndk/$OPERATOR_NDK_VERSION" || { echo "::error::NDK $OPERATOR_NDK_VERSION missing"; exit 1; }
           test -x "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" || { echo "::error::CMake $OPERATOR_CMAKE_VERSION missing"; exit 1; }
           "$ANDROID_HOME/cmake/$OPERATOR_CMAKE_VERSION/bin/cmake" --version
