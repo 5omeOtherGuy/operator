@@ -37,6 +37,19 @@ class ExecutorCore(
     private val pending = mutableMapOf<String, String>()
     private val mutex = Mutex()
 
+    /** Called at each owner task boundary, before accepting its first observation. */
+    suspend fun resetTask() {
+        mutex.lock()
+        try {
+            taint.reset()
+            edited.clear()
+            pending.clear()
+            usedTokens.clear()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
     /** The loop supplies only owner-authorised observations, never instructions from them. */
     fun observe(source: ObservedText) = taint.observe(source)
 
@@ -104,6 +117,10 @@ class ExecutorCore(
         // 5. Owner channel is never accessible through UI, notifications or foreground activities.
         if (screen?.foregroundPackage?.startsWith("dev.operator") == true ||
             node?.packageName?.startsWith("dev.operator") == true ||
+            (node != null && (node.packageName == "com.android.systemui" ||
+                screen?.foregroundPackage == "com.android.systemui") &&
+                context.operatorNotificationTarget(screen ?: hands.snapshot(), node) != false) ||
+            (node != null && context.operatorNotificationTarget(screen ?: hands.snapshot(), node) == true) ||
             (call is ToolCall.ReplyNotification && call.key.startsWith("dev.operator")) ||
             (call is ToolCall.NotificationAction && call.key.startsWith("dev.operator")) ||
             (call is ToolCall.ReplyNotification && hands.notifications().none { it.key == call.key && !it.isOperator }) ||
@@ -120,7 +137,8 @@ class ExecutorCore(
         }
         if (pkg != null && (!context.installed(pkg) || context.sensitive(pkg) ||
             pkg !in context.allowedPackages ||
-            pkg.contains("settings", true) && screen?.windows?.any { w ->
+            AppCategories.resolve(pkg, context.appCategory(pkg)) == AppCategory.SETTINGS &&
+                screen?.windows?.any { w ->
                 Regex("reset|factory|app info|developer|accessibility|device admin|special app|security|lock screen|account", RegexOption.IGNORE_CASE)
                     .containsMatchIn(w.title.orEmpty())
             } == true)) return refuse("package")
@@ -144,21 +162,25 @@ class ExecutorCore(
         }
         if (text != null && text.length > 4096 || node != null && NodeState.PASSWORD in node.state &&
             call is ToolCall.SetText) return refuse("text")
-        val detected = text?.let { taint.detect(it, context.ownerUtterance) }
+        val detected = arguments(call).values.firstNotNullOfOrNull {
+            taint.detect(it, context.ownerUtterance)
+        }
         val carried = if (node != null && screen != null && UiRisk.submit(node)) {
             edited.keys.firstNotNullOfOrNull { taint.field(it) }
         } else null
         // 9. Limits.
         val base = ToolCatalog.base.getValue(call::class)
+        val category = node?.let { AppCategories.resolve(it.packageName, context.appCategory(it.packageName)) }
         val raised = when (call) {
             is ToolCall.SetText -> detected != null
             is ToolCall.Click, is ToolCall.LongClick -> node != null && screen != null &&
-                UiRisk.risk(node, screen, carried != null, context.highRisk(node.packageName))
+                UiRisk.risk(node, screen, carried != null, category, context.iconBesideFilledEdit(screen, node))
             is ToolCall.CalendarInsert -> call.attendees.isNotEmpty()
             is ToolCall.SetPermission -> call.grantState == PermissionGrantState.GRANTED
             else -> false
         }
-        risk = if (raised || context.irreversible(call)) ToolCatalog.risers[call::class] ?: base else base
+        risk = if (raised || context.irreversible(call))
+            maxOf(base, ToolCatalog.risers[call::class] ?: RiskClass.R2) else base
         val irreversible = risk == RiskClass.R2 || risk == RiskClass.R3
         limits.refusal(call, ui, irreversible)?.let { return refuse(it) }
         // 10. Disarm, stop, and hard ceiling.
@@ -167,10 +189,17 @@ class ExecutorCore(
         if (irreversible) {
             val id = call.toString()
             if (approval == null) {
+                val label = if (node != null) context.appLabel(node.packageName)?.takeIf { it.isNotBlank() } else null
+                val source = if (node != null && screen != null) context.screenContext(screen, node) else null
+                if (node != null && (label == null || source == null)) return refuse("card_context")
                 val pendingId = "${clock.monotonicMs()}:${pending.size}"
                 pending[pendingId] = id
-                val card = GateCard("Confirm ${call.name}", listOf(id),
-                    listOfNotNull(node?.label, if (number != null && !context.knownNumber(number)) "Unknown number" else null),
+                val card = GateCard(
+                    if (node != null) "${call.name}: ${node.label.ifBlank { "unlabelled target" }} in $label (${node.packageName})"
+                    else "Confirm ${call.name}",
+                    arguments(call).map { (key, value) -> "$key: $value" },
+                    (source ?: emptyList()) +
+                        listOfNotNull(if (number != null && !context.knownNumber(number)) "Unknown number" else null),
                     detected ?: carried, risk, if (risk == RiskClass.R3)
                         listOf(ApprovalMethod.VOLUME_HOLD, ApprovalMethod.BIOMETRIC_STRONG)
                     else listOf(ApprovalMethod.VOLUME_HOLD))
@@ -191,7 +220,8 @@ class ExecutorCore(
                     }
                 }
             }
-            if (pending[approval.id] != id || approval.id in usedTokens || !context.authentic(approval) ||
+            if (pending[approval.id] != id || approval.id in usedTokens ||
+                !context.authentic(approval, arguments(call)) ||
                 approval.call != call || approval.issuedAtMs > clock.monotonicMs() ||
                 approval.expiresAtMs <= clock.monotonicMs() || approval.expiresAtMs - approval.issuedAtMs > 30_000 ||
                 (risk == RiskClass.R3 && approval.method != ApprovalMethod.BIOMETRIC_STRONG) ||
@@ -202,7 +232,8 @@ class ExecutorCore(
             val fresh = hands.snapshot()
             if (fresh.screenSignature != approval.screenSignature ||
                 target != null && fresh.nodes.none { it.index == target.second && it.key == target.third &&
-                    it.label == node?.label && action in it.actions }) return refuse("toctou")
+                    it.label == node?.label && action in it.actions } ||
+                context.editedFieldContents(edited.keys) != edited) return refuse("toctou")
         }
         val before = verifier.pre(call, screen)
         audit.append(AuditEvent(clock.wallMs(), AuditType.EXEC, null, context.steps, call.name,
@@ -244,6 +275,54 @@ class ExecutorCore(
         is ToolCall.CalendarQuery -> call.fromMs <= call.toMs
         is ToolCall.SendSms -> call.number.isNotBlank() && call.text.isNotBlank()
         is ToolCall.Call -> call.number.isNotBlank()
+        is ToolCall.InstallApk -> context.ownerPickedUri(call.uri)
         else -> true
+    }
+
+    /** Complete typed arguments for the card and taint check; never stringify a ToolCall for the owner. */
+    private fun arguments(call: ToolCall): Map<String, String> = when (call) {
+        is ToolCall.ReadScreen -> mapOf("snapshot" to call.snapshotId.toString())
+        ToolCall.ScreenshotInternal -> emptyMap()
+        ToolCall.ListNotifications -> emptyMap()
+        ToolCall.NextAlarm -> emptyMap()
+        is ToolCall.CalendarQuery -> mapOf("query" to call.query, "fromMs" to call.fromMs.toString(),
+            "toMs" to call.toMs.toString())
+        is ToolCall.AskOwner -> mapOf("question" to call.question)
+        is ToolCall.Finish -> mapOf("answer" to call.answer)
+        is ToolCall.Wait -> mapOf("ms" to call.ms.toString())
+        is ToolCall.SendSms -> mapOf("number" to call.number, "text" to call.text)
+        is ToolCall.Call -> mapOf("number" to call.number)
+        is ToolCall.ReplyNotification -> mapOf("notification" to call.key, "text" to call.text)
+        is ToolCall.NotificationAction -> mapOf("notification" to call.key, "action" to call.actionIndex.toString())
+        is ToolCall.SetText -> mapOf("snapshot" to call.snapshotId.toString(),
+            "element" to call.elementIndex.toString(), "key" to call.elementKey.hash.toString(),
+            "target" to call.label, "text" to call.text)
+        is ToolCall.Click -> mapOf("snapshot" to call.snapshotId.toString(),
+            "element" to call.elementIndex.toString(), "key" to call.elementKey.hash.toString(), "target" to call.label)
+        is ToolCall.LongClick -> mapOf("snapshot" to call.snapshotId.toString(),
+            "element" to call.elementIndex.toString(), "key" to call.elementKey.hash.toString(), "target" to call.label)
+        is ToolCall.Scroll -> mapOf("snapshot" to call.snapshotId.toString(),
+            "element" to call.elementIndex.toString(), "key" to call.elementKey.hash.toString(),
+            "direction" to call.direction.name)
+        ToolCall.Back, ToolCall.Home, ToolCall.Recents, ToolCall.Notifications,
+        ToolCall.QuickSettings, ToolCall.DismissShade, ToolCall.LockScreen -> emptyMap()
+        is ToolCall.Media -> mapOf("action" to call.action.name)
+        is ToolCall.InstallApk -> mapOf("uri" to call.uri)
+        is ToolCall.Uninstall -> mapOf("package" to call.packageName)
+        is ToolCall.HideApp -> mapOf("package" to call.packageName)
+        is ToolCall.SuspendApp -> mapOf("package" to call.packageName)
+        is ToolCall.SetPermission -> mapOf("package" to call.packageName, "permission" to call.permission,
+            "state" to call.grantState.name)
+        is ToolCall.CalendarInsert -> mapOf("title" to call.title, "attendees" to call.attendees.joinToString(),
+            "location" to call.location.orEmpty(), "beginMs" to call.beginMs.toString(),
+            "endMs" to call.endMs.toString())
+        is ToolCall.CalendarDelete -> mapOf("eventId" to call.eventId.toString())
+        is ToolCall.LaunchApp -> mapOf("package" to call.packageName)
+        is ToolCall.SetAlarm -> mapOf("time" to "${call.hour}:${call.minute}",
+            "label" to call.label.orEmpty(), "days" to call.daysOfWeek.joinToString())
+        is ToolCall.SetTimer -> mapOf("durationMs" to call.durationMs.toString(), "label" to call.label.orEmpty())
+        is ToolCall.DismissAlarm -> mapOf("triggerTimeMs" to call.triggerTimeMs.toString())
+        is ToolCall.Torch -> mapOf("on" to call.on.toString())
+        ToolCall.HeadsetHook, ToolCall.Reboot -> emptyMap()
     }
 }

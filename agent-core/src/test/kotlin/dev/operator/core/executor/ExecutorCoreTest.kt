@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
 
 class ExecutorCoreTest {
     private val key = ElementKey(7)
@@ -40,16 +43,54 @@ class ExecutorCoreTest {
             it.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
         }.toSet() + setOf("click", "send_sms", "set_text", "read_screen")
         override val allowedPackages = setOf("example.app", "com.test.browser", "com.test.messaging",
-            "com.test.email", "com.test.social", "com.android.settings")
+            "com.test.email", "com.test.social", "com.android.settings", "com.whatsapp",
+            "com.google.android.gm", "com.android.chrome", "unknown.pkg", "com.android.systemui")
         override val ownerUtterance = "please do this"
         override var halted = false
         override var steps = 0
+        var classifier = false
+        var categoryOverride: AppCategory? = AppCategory.OTHER
+        var iconByEdit: Boolean? = false
+        var operatorRow: Boolean? = false
+        var fields: Map<ElementKey, String>? = emptyMap()
+        var picked = emptySet<String>()
+        var label: String? = "Test application"
+        var provenance: List<String>? = listOf("Conversation from screen")
+        private val key = SecretKeySpec(ByteArray(32) { (it * 3 + 7).toByte() }, "HmacSHA256")
         override fun installed(pkg: String) = true
         override fun knownNumber(number: String) = false
-        override fun authentic(token: ApprovalToken) = token.id.startsWith("trusted")
+        fun mint(token: ApprovalToken, args: Map<String, String>): ApprovalToken {
+            val signature = seal(token, args)
+            return token.copy(id = "${token.id}:$signature")
+        }
+        override fun authentic(token: ApprovalToken, canonicalArguments: Map<String, String>): Boolean {
+            val nonce = token.id.substringBeforeLast(':', "")
+            val mac = token.id.substringAfterLast(':', "")
+            if (nonce.isEmpty() || mac.length != 64) return false
+            val expected = seal(token.copy(id = nonce), canonicalArguments)
+            return MessageDigest.isEqual(expected.toByteArray(), mac.toByteArray())
+        }
+        private fun seal(token: ApprovalToken, args: Map<String, String>): String {
+            val payload = listOf(token.id, token.call.name, token.screenSignature.toString(),
+                token.editedFieldContents.toSortedMap(compareBy { it.hash }).toString(),
+                token.method.name, token.issuedAtMs.toString(), token.expiresAtMs.toString(),
+                args.toSortedMap().entries.joinToString("") { "${it.key.length}:${it.key}${it.value.length}:${it.value}" })
+                .joinToString("|")
+            return Mac.getInstance("HmacSHA256").apply { init(key) }
+                .doFinal(payload.toByteArray()).joinToString("") { "%02x".format(it) }
+        }
+        override fun irreversible(call: ToolCall) = classifier
+        override fun appCategory(pkg: String) = categoryOverride
+        override fun iconBesideFilledEdit(snapshot: Snapshot, node: UiNode) = iconByEdit
+        override fun operatorNotificationTarget(snapshot: Snapshot, node: UiNode) = operatorRow
+        override fun editedFieldContents(keys: Set<ElementKey>) = fields?.filterKeys { it in keys }
+        override fun ownerPickedUri(uri: String) = uri in picked
+        override fun appLabel(pkg: String) = label
+        override fun screenContext(snapshot: Snapshot, node: UiNode) = provenance
     }
     private class Gate : GatePort {
         override val armed = MutableStateFlow(true)
+        var onMint: (ApprovalToken, Map<String, String>) -> ApprovalToken = { token, _ -> token }
         var now = 100_000L
         var current: ToolCall? = null
         var signature: ScreenSignature? = null
@@ -58,9 +99,11 @@ class ExecutorCoreTest {
         var last: GateCard? = null
         override suspend fun request(card: GateCard): GateResult {
             last = card
-            val t = ApprovalToken("trusted-${System.nanoTime()}", current!!, signature!!, edited,
+            val candidate = ApprovalToken("nonce-${System.nanoTime()}", current!!, signature!!, edited,
                 if (card.riskClass == RiskClass.R3) ApprovalMethod.BIOMETRIC_STRONG else ApprovalMethod.VOLUME_HOLD,
                 now, now + 30_000)
+            val args = card.arguments.associate { it.substringBefore(": ") to it.substringAfter(": ") }
+            val t = onMint(candidate, args)
             token = t
             return GateResult.Approved(t)
         }
@@ -71,6 +114,7 @@ class ExecutorCoreTest {
         val hands = Hands(s)
         val ctx = Context()
         val gate = Gate()
+        init { gate.onMint = { token, args -> ctx.mint(token, args) } }
         val events = mutableListOf<AuditEvent>()
         var effects = 0
         val executor = ExecutorCore(hands, object : EffectAdapter {
@@ -87,7 +131,12 @@ class ExecutorCoreTest {
             gate.current = call
             gate.signature = hands.screen.screenSignature
             gate.now = clock.now
-            return executor.execute(call, approval)
+            gate.edited = ctx.fields.orEmpty()
+            val result = executor.execute(call, approval)
+            if (result is ExecResult.Done && call is ToolCall.SetText) {
+                ctx.fields = ctx.fields.orEmpty() + (call.elementKey to call.text)
+            }
+            return result
         }
         suspend fun approve(call: ToolCall): ExecResult {
             assertTrue(run(call) is ExecResult.NeedsApproval)
@@ -160,6 +209,134 @@ class ExecutorCoreTest {
         assertTrue(f.gate.last!!.fromScreen.contains("Unknown number"))
     }
 
+    @Test fun `classifier raises even tools absent from risers`() = runBlocking {
+        val f = Fixture(screen())
+        f.ctx.classifier = true
+        assertTrue(f.run(ToolCall.LaunchApp("example.app")) is ExecResult.NeedsApproval)
+        assertEquals(RiskClass.R2, f.gate.last!!.riskClass)
+        assertEquals(0, f.effects)
+    }
+
+    @Test fun `category seeds host category and unknown app all gate UI`() = runBlocking {
+        listOf("com.whatsapp", "com.google.android.gm", "com.android.chrome", "unknown.pkg").forEach { pkg ->
+            val f = Fixture(screen(node("React", pkg = pkg)))
+            f.ctx.categoryOverride = null
+            assertTrue("$pkg", f.run(click(label = "React")) is ExecResult.NeedsApproval)
+        }
+        val f = Fixture(screen(node("React", pkg = "example.app")))
+        f.ctx.categoryOverride = null
+        assertTrue(f.run(click(label = "React")) is ExecResult.NeedsApproval)
+        val unknownNav = Fixture(screen(node("Back", pkg = "unknown.pkg")))
+        unknownNav.ctx.categoryOverride = null
+        assertTrue(unknownNav.run(click(label = "Back")) is ExecResult.NeedsApproval)
+        val seeded = Fixture(screen(node("Open", pkg = "com.test.messaging")))
+        seeded.ctx.categoryOverride = AppCategory.OTHER
+        assertTrue(seeded.run(click()) is ExecResult.NeedsApproval)
+        val host = Fixture(screen(node("Open")))
+        host.ctx.categoryOverride = AppCategory.SOCIAL
+        assertTrue(host.run(click()) is ExecResult.NeedsApproval)
+    }
+
+    @Test fun `native browser suggestions require approval without web nodes`() = runBlocking {
+        val f = Fixture(screen(node("Suggestion", pkg = "com.test.browser")))
+        f.ctx.categoryOverride = AppCategory.BROWSER
+        assertTrue(f.run(click(label = "Suggestion")) is ExecResult.NeedsApproval)
+        assertEquals(0, f.hands.acted)
+    }
+
+    @Test fun `ancestor and adjacent filled edit icon raise unlabelled targets`() = runBlocking {
+        val n = node("").copy(parentIndex = 2)
+        val parent = node("Send").copy(index = 2, key = ElementKey(99))
+        val s = screen(n).copy(nodes = listOf(n, parent))
+        val f = Fixture(s)
+        assertTrue(f.run(click(label = "")) is ExecResult.NeedsApproval)
+        val icon = Fixture(screen(node("")))
+        icon.ctx.iconByEdit = true
+        assertTrue(icon.run(click(label = "")) is ExecResult.NeedsApproval)
+    }
+
+    @Test fun `SystemUI operator row cannot be clicked`() = runBlocking {
+        val f = Fixture(screen(node("Open", pkg = "com.android.systemui")))
+        f.ctx.operatorRow = true
+        assertEquals("owner_channel", (f.run(click()) as ExecResult.Refused).reason)
+        assertEquals(0, f.hands.acted)
+        val unknown = Fixture(screen(node("Open", pkg = "com.android.systemui")))
+        unknown.ctx.operatorRow = null
+        assertEquals("owner_channel", (unknown.run(click()) as ExecResult.Refused).reason)
+    }
+
+    @Test fun `taint includes recipients and URI arguments on gate card`() = runBlocking {
+        val f = Fixture(screen())
+        f.executor.observe(ObservedText("other.app", "phone 15551234567"))
+        assertTrue(f.run(ToolCall.SendSms("+15551234567", "hello")) is ExecResult.NeedsApproval)
+        assertEquals("other.app", f.gate.last!!.taint!!.sourcePackage)
+        val apk = Fixture(screen())
+        apk.ctx.picked = setOf("content://owner/secret12345")
+        apk.executor.observe(ObservedText("other.app", "secret12345"))
+        assertTrue(apk.run(ToolCall.InstallApk("content://owner/secret12345")) is ExecResult.NeedsApproval)
+        assertEquals("other.app", apk.gate.last!!.taint!!.sourcePackage)
+    }
+
+    @Test fun `edited field must be reread and match immediately before acting`() = runBlocking {
+        val f = Fixture(screen(node("Message", Role.EDIT)))
+        val set = ToolCall.SetText(1, 1, key, "Message", "hello")
+        assertEquals(ExecResult.Done("read-back"), f.run(set))
+        f.ctx.fields = mapOf(key to "hello")
+        val sms = ToolCall.SendSms("+15551234567", "hello")
+        assertTrue(f.run(sms) is ExecResult.NeedsApproval)
+        f.ctx.fields = mapOf(key to "tampered")
+        assertEquals("toctou", (f.run(sms, f.gate.token) as ExecResult.Refused).reason)
+        assertEquals(0, f.effects)
+    }
+
+    @Test fun `gate card names app and renders typed arguments separately from screen data`() = runBlocking {
+        val f = Fixture(screen(node("Send")))
+        assertTrue(f.run(click(label = "Send")) is ExecResult.NeedsApproval)
+        assertTrue(f.gate.last!!.title.contains("Test application"))
+        assertTrue(f.gate.last!!.title.contains("Send"))
+        assertTrue(f.gate.last!!.fromScreen.contains("Conversation from screen"))
+        assertFalse(f.gate.last!!.arguments.any { it.contains("ToolCall") || it.contains("Click(") })
+        val missing = Fixture(screen(node("Send")))
+        missing.ctx.label = null
+        assertEquals("card_context", (missing.run(click(label = "Send")) as ExecResult.Refused).reason)
+    }
+
+    @Test fun `unpicked install URI refused before gate`() = runBlocking {
+        val f = Fixture(screen())
+        assertEquals("schema", (f.run(ToolCall.InstallApk("content://model/file")) as ExecResult.Refused).reason)
+        assertEquals(0, f.effects)
+    }
+
+    @Test fun `missing live field reader fails closed`() = runBlocking {
+        val f = Fixture(screen(node("Message", Role.EDIT)))
+        assertEquals(ExecResult.Done("read-back"), f.run(ToolCall.SetText(1, 1, key, "Message", "hello")))
+        val sms = ToolCall.SendSms("+15551234567", "hello")
+        assertTrue(f.run(sms) is ExecResult.NeedsApproval)
+        f.ctx.fields = null
+        assertEquals("toctou", (f.run(sms, f.gate.token) as ExecResult.Refused).reason)
+    }
+
+    @Test fun `forged token and stale task observations cannot authorize effects`() = runBlocking {
+        val f = Fixture(screen())
+        val sms = ToolCall.SendSms("+15551234567", "hello")
+        assertTrue(f.run(sms) is ExecResult.NeedsApproval)
+        val forged = f.gate.token!!.copy(expiresAtMs = 129_999)
+        assertEquals("approval", (f.run(sms, forged) as ExecResult.Refused).reason)
+        f.executor.observe(ObservedText("earlier.app", "secret123456"))
+        f.executor.resetTask()
+        assertEquals(ExecResult.Done("read-back"), f.run(ToolCall.SetText(1, 1, key, "Open", "secret123456")))
+    }
+
+    @Test fun `expired rate windows are discarded`() {
+        val clock = FakeClock()
+        val rate = RateLimits(clock)
+        repeat(100) { i ->
+            clock.now += 86_400_001
+            rate.record(ToolCall.Back, true, false)
+            assertTrue(rate.storedEvents <= 2)
+        }
+    }
+
     @Test fun `rate limit rows and ceiling`() = runBlocking {
         data class Row(val call: ToolCall, val allowed: Int, val reason: String, val stepMs: Long = 61_000)
         val rows = listOf(
@@ -172,6 +349,7 @@ class ExecutorCoreTest {
         )
         rows.forEach { row ->
             val f = Fixture(screen())
+            if (row.call is ToolCall.InstallApk) f.ctx.picked = setOf(row.call.uri)
             repeat(row.allowed) { i ->
                 val call = if (row.call is ToolCall.SendSms) row.call.copy(text = "text-$i") else row.call
                 val result = if (row.call is ToolCall.Back) f.run(call) else f.approve(call)

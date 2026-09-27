@@ -2,6 +2,30 @@ package dev.operator.core.policy
 
 import dev.operator.core.api.*
 
+enum class AppCategory { MESSAGING, EMAIL, SOCIAL, BROWSER, SETTINGS, DIALOG_CAPABLE, OTHER }
+
+object AppCategories {
+    private val seeds = mapOf(
+        "com.google.android.apps.messaging" to AppCategory.MESSAGING,
+        "com.android.mms" to AppCategory.MESSAGING,
+        "com.whatsapp" to AppCategory.MESSAGING,
+        "org.telegram.messenger" to AppCategory.MESSAGING,
+        "com.test.messaging" to AppCategory.MESSAGING,
+        "com.google.android.gm" to AppCategory.EMAIL,
+        "com.microsoft.office.outlook" to AppCategory.EMAIL,
+        "com.test.email" to AppCategory.EMAIL,
+        "com.instagram.android" to AppCategory.SOCIAL,
+        "com.facebook.katana" to AppCategory.SOCIAL,
+        "com.test.social" to AppCategory.SOCIAL,
+        "com.android.chrome" to AppCategory.BROWSER,
+        "org.mozilla.firefox" to AppCategory.BROWSER,
+        "com.test.browser" to AppCategory.BROWSER,
+        "com.android.settings" to AppCategory.SETTINGS,
+    )
+    fun resolve(pkg: String, host: AppCategory?): AppCategory? =
+        seeds[pkg] ?: host
+}
+
 /** Owner-selected capabilities and host facts. Never derive these from screen text. */
 interface PolicyContext {
     val allowedTools: Set<String>
@@ -11,11 +35,21 @@ interface PolicyContext {
     val steps: Int
     fun installed(pkg: String): Boolean
     fun sensitive(pkg: String): Boolean = SensitivePackages.matches(pkg)
-    fun highRisk(pkg: String): Boolean = listOf("messag", "sms", "mail", "social", "settings", "browser")
-        .any { it in pkg.lowercase() }
+    /** I1 supplies the host's ApplicationInfo.category mapping; null is unknown (R2). */
+    fun appCategory(pkg: String): AppCategory? = null
+    /** S7 supplies authoritative target metadata, not text inferred from a SystemUI node. */
+    fun operatorNotificationTarget(snapshot: Snapshot, node: UiNode): Boolean? = null
+    /** S7/S2 supply adjacency when OSF's flat nodes cannot show a filled sibling edit. */
+    fun iconBesideFilledEdit(snapshot: Snapshot, node: UiNode): Boolean? = null
+    /** S7 reads the *live* contents of all edited fields; null means unavailable, not empty. */
+    fun editedFieldContents(keys: Set<ElementKey>): Map<ElementKey, String>? = null
+    /** Owner-only picker registry from S7/I1; model-provided URIs never satisfy this by default. */
+    fun ownerPickedUri(uri: String): Boolean = false
+    fun appLabel(pkg: String): String? = null
+    fun screenContext(snapshot: Snapshot, node: UiNode): List<String>? = null
     fun knownNumber(number: String): Boolean
-    /** A trusted gate implementation must authenticate the token's nonce/MAC, not just its fields. */
-    fun authentic(token: ApprovalToken): Boolean
+    /** Verify gate-issued MAC over nonce, task, step, canonical typed arguments, screen and edited fields. */
+    fun authentic(token: ApprovalToken, canonicalArguments: Map<String, String>): Boolean
     /** Host-only classifier; can only raise the class. */
     fun irreversible(call: ToolCall): Boolean = false
 }
@@ -38,6 +72,7 @@ data class ObservedText(val packageName: String, val text: String)
 class TaintTracker {
     private val observations = mutableListOf<ObservedText>()
     private val fields = mutableMapOf<ElementKey, Taint>()
+    fun reset() { observations.clear(); fields.clear() }
     fun observe(source: ObservedText) { observations += source }
     fun field(key: ElementKey): Taint? = fields[key]
     fun setField(key: ElementKey, value: String, taint: Taint?) {
@@ -72,31 +107,41 @@ object UiRisk {
     private val navigation = Regex("^(back|up|close|more options|overflow|expand|collapse|navigate up)$", RegexOption.IGNORE_CASE)
     fun submit(node: UiNode): Boolean = Regex("send|submit|search|go|enter|suggest|form|reply", RegexOption.IGNORE_CASE)
         .containsMatchIn(listOfNotNull(node.label, node.viewId).joinToString(" "))
-    fun browser(snapshot: Snapshot): Boolean = snapshot.nodes.any { it.role == Role.WEB } &&
-        snapshot.nodes.any { it.role == Role.EDIT } ||
-        snapshot.foregroundPackage.contains("browser", true)
-    fun risk(node: UiNode, snapshot: Snapshot, tainted: Boolean, highRisk: Boolean = false): Boolean {
-        val text = listOfNotNull(node.label, node.viewId, node.className).joinToString(" ")
+    fun browser(snapshot: Snapshot, category: AppCategory?): Boolean =
+        category == AppCategory.BROWSER ||
+            snapshot.nodes.any { it.role == Role.WEB } && snapshot.nodes.any { it.role == Role.EDIT }
+    fun risk(node: UiNode, snapshot: Snapshot, tainted: Boolean, category: AppCategory?,
+             besideFilledEdit: Boolean?): Boolean {
+        if (category == null) return true
+        val ancestors = generateSequence(node.parentIndex) { index ->
+            snapshot.nodes.firstOrNull { it.index == index }?.parentIndex
+        }.take(snapshot.nodes.size).mapNotNull { index -> snapshot.nodes.firstOrNull { it.index == index } }
+        val text = (sequenceOf(node) + ancestors).flatMap {
+            sequenceOf(it.label, it.viewId.orEmpty(), it.className.orEmpty())
+        }.joinToString(" ")
         val dialog = snapshot.windows.any { it.id == node.windowId && it.title?.contains("dialog", true) == true } ||
             node.windowTitle?.contains("dialog", true) == true
-        val web = browser(snapshot)
+        val web = browser(snapshot, category)
         if (tainted && submit(node) || web && submit(node)) return true
         if (words.containsMatchIn(text) || node.viewId == "android:id/button1" ||
             text.contains("share target", true) || text.contains("reaction", true) ||
-            text.contains("smart reply", true) || text.contains("send_icon", true)) return true
+            text.contains("smart reply", true) || text.contains("send_icon", true) ||
+            node.label.isBlank() && besideFilledEdit != false) return true
         if (dialog && node.role == Role.BTN) return true
         val nav = navigation.matches(node.label) || node.role == Role.TAB ||
             node.role == Role.EDIT && node.actions.contains(NodeAction.FOCUS) ||
             node.actions.any { it in setOf(NodeAction.EXPAND, NodeAction.COLLAPSE) }
-        return (dialog || web || highRisk || snapshot.foregroundPackage.contains("settings", true) ||
-            listOf("messag", "sms", "mail", "social").any { it in snapshot.foregroundPackage.lowercase() }) && !nav
+        return (dialog || web || category != AppCategory.OTHER) && !nav
     }
 }
 
 class RateLimits(private val clock: Clock) {
     private val events = mutableListOf<Triple<String, String, Long>>()
+    val storedEvents: Int get() = events.size
+    private fun prune(now: Long) { events.removeAll { now < it.third || now - it.third >= 86_400_000L } }
     fun refusal(call: ToolCall, ui: Boolean, irreversible: Boolean): String? {
         val now = clock.monotonicMs()
+        prune(now)
         val limits = buildList {
             if (ui) add(Triple("ui", 3, 1_000L))
             if (call is ToolCall.SendSms) { add(Triple("sms", 5, 3_600_000L)); add(Triple("sms", 20, 86_400_000L)) }
@@ -113,6 +158,7 @@ class RateLimits(private val clock: Clock) {
     }
     fun record(call: ToolCall, ui: Boolean, irreversible: Boolean) {
         val now = clock.monotonicMs()
+        prune(now)
         if (ui) events += Triple("ui", call.toString(), now)
         when (call) {
             is ToolCall.SendSms -> events += Triple("sms", call.toString(), now)
