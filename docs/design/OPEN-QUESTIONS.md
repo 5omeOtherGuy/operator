@@ -11,6 +11,10 @@ Date: 2026-09-27. Source: the foundation design (`FOUNDATION.md`) and research l
 
 **Quick reply format:** `OQ-n: default` or `OQ-n: (b)`.
 
+## Owner answers
+
+- 2026-09-27 05:10 CEST (owner, AskUserQuestion): **all defaults accepted** for OQ-1…OQ-28, each answerable later with `OQ-n: (x)`; scope: **build the full M1** of FOUNDATION §14 on this design.
+
 ## Questions
 
 ### Needed for M1 (a11y + direct APIs, no device owner)
