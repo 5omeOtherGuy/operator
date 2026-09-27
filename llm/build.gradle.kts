@@ -2,6 +2,8 @@
 // §4.2; ADR-0002, ADR-0005). The upstream examples/llama.android/lib Kotlin sources are compiled in
 // place from the pinned submodule; the CMakeLists is copied into llm/src/main/cpp with the operator
 // patch set (P1 + the §4.2 flags) and operator_jni.cpp is added to the target.
+// Only the arm64-v8a channels (:app dev and prod) depend on this module; the emulator channel uses
+// the Kotlin-only :llm-stub, so no variant of :app can pull x86_64 native code in (§4.2 R25).
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -10,8 +12,9 @@ plugins {
 val llamaCppDir = rootProject.layout.projectDirectory.dir("third_party/llama.cpp")
 val upstreamLibDir = llamaCppDir.dir("examples/llama.android/lib")
 
-// -Poperator.noNative=true skips externalNativeBuild entirely: the emulatorStub flavour has no .so
-// and the `kotlin` CI job compiles without an NDK (§4.2 R25, ADR-0005).
+// -Poperator.noNative=true skips externalNativeBuild entirely: the fast `kotlin` CI job compiles the
+// whole variant matrix without an NDK (§4.2 R25, ADR-0005). It is not what keeps the emulator
+// channel native-free — that channel does not depend on this module at all.
 val noNative = providers.gradleProperty("operator.noNative").orNull == "true"
 
 // -Poperator.ccache=true wires the ccache launchers; the `apk` CI job installs ccache and caches it.
@@ -24,22 +27,13 @@ android {
     compileSdk = 36
     ndkVersion = libs.versions.ndk.get()
 
-    // :app and :llm share these two flavours so the variants match (dev = arm64 + native,
-    // emulatorStub = x86_64, no native code).
-    flavorDimensions += "channel"
-    productFlavors {
-        create("dev") {
-            dimension = "channel"
-            ndk { abiFilters += "arm64-v8a" }
-        }
-        create("emulatorStub") {
-            dimension = "channel"
-            ndk { abiFilters += "x86_64" }
-        }
-    }
-
     defaultConfig {
         minSdk = 33
+
+        // The native engine is arm64-v8a only (§4.2 R25): every consumer is the dev or the prod
+        // channel of :app, both arm64-v8a, and this module has no flavour of its own so that no
+        // x86_64 variant can ever match an :app variant.
+        ndk { abiFilters += "arm64-v8a" }
 
         externalNativeBuild {
             cmake {
@@ -80,4 +74,10 @@ kotlin {
 dependencies {
     api(project(":llm-api"))
     implementation(libs.kotlinx.coroutines.android)
+
+    // F0 placeholder: the `:llm` service that this module will implement is still the stub in
+    // :llm-stub, so the dev and prod channels get a declared, bindable service while the native
+    // engine is being written. S1 declares the real service in llm/src/main/AndroidManifest.xml and
+    // drops this dependency.
+    implementation(project(":llm-stub"))
 }

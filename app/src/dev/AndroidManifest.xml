@@ -1,10 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The dev-only eval surface (FOUNDATION §12, ADR-0015; §12 D10 moved the debug receiver into the
-     dev source set). Merged into the `dev` flavour only, never into `emulatorStub`. Guarded by
-     android.permission.DUMP, which the adb shell holds. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+     dev source set). Merged into the `dev` flavour only, never into `prod` or `emulatorStub`.
+     Guarded by android.permission.DUMP, which the adb shell holds. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <application>
+    <!-- §12 "Harness": the dev variant is testOnly and debuggable, with the same applicationId and
+         the same signing key as release (research 07 R1). The manifest merger only *adds* these
+         attributes for debuggable and test variants, so declaring them in this flavour manifest is
+         enough for both devDebug and devRelease. `prod` copies neither, and the `checks` CI job
+         asserts exactly that (no testOnly, no EvalReceiver, no APPROVE_GATE in prod).
+         HardcodedDebugMode is suppressed here alone: the dev channel is debuggable by design and its
+         release build type must not bring the flag in for prod, so the attribute has to be declared;
+         the prod channel is covered by the checks job instead of by lint. -->
+    <application
+        android:debuggable="true"
+        android:testOnly="true"
+        tools:ignore="HardcodedDebugMode">
 
         <receiver
             android:name="dev.operator.eval.EvalReceiver"

@@ -8,9 +8,9 @@ import dev.operator.R
 /**
  * The quick settings tile (FOUNDATION §11; ADR-0016).
  *
- * The tile opens the command screen. It never starts a task and never approves anything on its own:
- * the owner channel is operator's activities only (§9.3 item 1, S-10). S11 wires it to the command
- * sheet; F0 only declares it and its state.
+ * §11: the tile opens the command sheet, never a task, and never approves anything on its own — the
+ * owner channel is operator's activities only (§9.3 item 1, S-10). F0 declares the tile and its
+ * state; S11 wires [onClick] to the command sheet.
  */
 class QuickSettingsTileService : TileService() {
 
@@ -24,7 +24,7 @@ class QuickSettingsTileService : TileService() {
         }
     }
 
-    /** §11: opens the command screen; no task starts from here. */
+    /** F0 placeholder: S11 opens the command sheet here; no task ever starts from this tile (§11). */
     override fun onClick() {
         super.onClick()
     }

@@ -84,8 +84,9 @@ object ToolCatalog {
     /**
      * §7.2 F-class: forbidden, no [ToolCall] exists and the S-08 lint checks for them
      * (`open_url`, arbitrary intents and deep links; `power_dialog`; `global_screenshot`;
-     * the a11y button, chooser, shortcut and all-apps actions; `ACTION_COPY`/`_CUT`/`_PASTE` and
-     * every clipboard read or write; raw Settings and DPM calls; `wipeData`/`wipeDevice`,
+     * the a11y button, chooser, shortcut and all-apps actions; the clipboard copy, cut and paste
+     * actions and every clipboard read or write (§7.4 step 4); raw Settings and DPM calls;
+     * `wipeData`/`wipeDevice`,
      * `removeUser`, `transferOwnership`, `clearDeviceOwnerApp`, `setKeyguardDisabled`,
      * system-update calls, user restrictions, CA certificates, VPN/proxy/private DNS,
      * `setPermissionPolicy`, `setDelegatedScopes`, `setUserControlDisabledPackages`,

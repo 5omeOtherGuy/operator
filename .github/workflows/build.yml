@@ -2,9 +2,9 @@ name: build
 
 # FOUNDATION §12 / ADR-0015 CI job graph, M1 subset:
 #   jvm    - :agent-core tests on the JDK-only path (no Android SDK at all)
-#   kotlin - both :app flavours compiled, no native code
-#   apk    - dev (arm64-v8a, native :llm), emulatorStub (x86_64, no .so) and the fixture APK
-#   checks - S-08 module rule, INTERNET-free operator manifests, .so sets of both APKs
+#   kotlin - the whole :app channel matrix compiled, no native code
+#   apk    - dev (arm64-v8a, native :llm), emulatorStub (x86_64, Kotlin-only, no .so) and the fixture
+#   checks - S-08 module rule, INTERNET-free operator manifests, dev/prod channel manifests, .so sets
 on:
   push:
   pull_request:
@@ -42,7 +42,7 @@ jobs:
           ANDROID_SDK_ROOT: ""
 
   kotlin:
-    name: kotlin (both :app flavours, no native)
+    name: kotlin (dev, prod and emulatorStub, no native)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -54,8 +54,10 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v6
-      - name: Compile both flavours
-        run: ./gradlew :app:assembleDevDebug :app:assembleEmulatorStubDebug -Poperator.noNative=true --stacktrace --console=plain
+      # -Poperator.noNative=true makes this the fast, NDK-free compile of every channel; the `apk`
+      # job builds the arm64 dev channel with the native :llm.
+      - name: Compile every channel
+        run: ./gradlew :app:assembleDevDebug :app:assembleProdDebug :app:assembleEmulatorStubDebug -Poperator.noNative=true --stacktrace --console=plain
 
   apk:
     name: apk (dev arm64 native, emulatorStub, fixture)
@@ -98,8 +100,14 @@ jobs:
         env:
           CCACHE_DIR: ${{ github.workspace }}/.ccache
         run: ./gradlew :app:assembleDevRelease :fixture:assembleDebug -Poperator.ccache=true --stacktrace --console=plain
-      - name: Build the emulatorStub APK (x86_64, no native code)
-        run: ./gradlew :app:assembleEmulatorStubRelease -Poperator.noNative=true --stacktrace --console=plain
+      - name: Build the emulatorStub APK (x86_64, Kotlin-only :llm-stub, no flag)
+        # Deliberately no -Poperator.noNative=true: the emulator channel has no :llm dependency at
+        # all, so it must come out free of native libraries on its own (§4.2 R25).
+        run: ./gradlew :app:assembleEmulatorStubRelease --stacktrace --console=plain
+      - name: Merge the prod manifest (no native prod APK)
+        # The `checks` job asserts on the prod channel's merged manifest; merging it is a few seconds,
+        # while a native prod APK would repeat the whole NDK build.
+        run: ./gradlew :app:processProdReleaseMainManifest -Poperator.noNative=true --stacktrace --console=plain
       - name: ccache stats
         run: ccache -s || true
       - name: Upload the APKs and the merged manifests
@@ -115,7 +123,7 @@ jobs:
             app/build/intermediates/packaged_manifest*/**/AndroidManifest.xml
 
   checks:
-    name: checks (S-08, module rule, .so sets)
+    name: checks (S-08, module rule, channel manifests, .so sets)
     needs: apk
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -131,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           matches="$(grep -rnE 'dispatchGesture|performAction|DevicePolicyManager|SmsManager' \
-            app/src llm/src llm-api/src fixture/src agent-core/src --include='*.kt' --include='*.java' \
+            app/src llm/src llm-api/src llm-stub/src fixture/src agent-core/src --include='*.kt' --include='*.java' \
             | grep -vE '/(hands|adapters|executor)/' || true)"
           if [ -n "$matches" ]; then
             printf '%s\n' "$matches"
@@ -139,14 +147,39 @@ jobs:
             exit 1
           fi
           echo "S-08 module rule: no effect API outside hands/, adapters/ and executor/"
+      - name: S-08 no clipboard API and no RemoteInput in :app or :agent-core
+        run: |
+          set -euo pipefail
+          # §7.4 step 4: copy, cut and paste are refused, so no operator source may reach for the
+          # clipboard; §9.3 item 1 forbids RemoteInput on operator notifications (ADR-0015 S-08).
+          # RemoteInput is allowed only in adapters/, which replies to OTHER apps' notifications (T0).
+          matches="$( { grep -rnE 'ClipboardManager|setPrimaryClip|ACTION_COPY|ACTION_CUT|ACTION_PASTE' \
+            app/src agent-core/src/main --include='*.kt' --include='*.java' \
+            --include='*.xml' --include='*.aidl' || true
+            grep -rnE 'RemoteInput' app/src/main agent-core/src/main --include='*.kt' --include='*.java' \
+            --include='*.xml' --include='*.aidl' | grep -v '/dev/operator/adapters/' || true; } )"
+          if [ -n "$matches" ]; then
+            printf '%s\n' "$matches"
+            echo "::error::FOUNDATION §7.4: no clipboard API and no RemoteInput in :app or :agent-core"
+            exit 1
+          fi
+          echo "S-08 clipboard rule: no clipboard API; RemoteInput only under adapters/"
+      - name: S-08 never-compiled APIs (wipeData, ADB settings)
+        run: |
+          set -euo pipefail
+          # §9.4 and the owner's constraint: wipeData is never reachable; no DO ADB_* global settings (§0.1 item 1).
+          matches="$(grep -rnE 'wipeData|wipeDevice|ADB_ENABLED|ADB_WIFI_ENABLED' app/src agent-core/src llm/src llm-stub/src \
+            --include='*.kt' --include='*.java' --include='*.xml' --include='*.aidl' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(\*|//|/\*)' || true)"
+          if [ -n "$matches" ]; then printf '%s\n' "$matches"; echo "::error::wipeData/ADB settings must never be compiled in"; exit 1; fi
+          echo "S-08 never-compiled rule: no wipeData, wipeDevice or ADB_* settings"
       - name: S-08 no INTERNET in an operator manifest
         run: |
           set -euo pipefail
           # Every AndroidManifest.xml in the artifact is a merged or a packaged manifest of :app.
           mapfile -t merged < <(find artifacts -name AndroidManifest.xml | sort)
           printf '%s\n' "${merged[@]}"
-          if [ "${#merged[@]}" -lt 2 ]; then
-            echo "::error::expected the dev and the emulatorStub merged manifest in the artifact"
+          if [ "${#merged[@]}" -lt 3 ]; then
+            echo "::error::expected the dev, the prod and the emulatorStub merged manifest in the artifact"
             exit 1
           fi
           status=0
@@ -167,6 +200,50 @@ jobs:
             else
               echo "no INTERNET: $apk"
             fi
+          done
+          exit $status
+      - name: Channel manifests (dev is testOnly and carries the eval surface, prod carries neither)
+        run: |
+          set -euo pipefail
+          # §12 "Harness" + research 07 R1/D10: the dev channel is testOnly and ships EvalReceiver
+          # (APPROVE_GATE included); the prod channel is the future non-testOnly release and must
+          # carry no eval surface at all. Replaces the draft's release-APK assertions (R4 size job).
+          dev_manifest="$(find artifacts -name AndroidManifest.xml -path '*devRelease*' | sort | head -n 1)"
+          if [ -z "$dev_manifest" ]; then
+            echo "::error::the dev merged manifest is not in the artifact"
+            exit 1
+          fi
+          if ! grep -q 'android:testOnly="true"' "$dev_manifest"; then
+            echo "::error file=$dev_manifest::the dev channel must be android:testOnly=\"true\" (§12)"
+            exit 1
+          fi
+          echo "dev is testOnly: $dev_manifest"
+          if ! grep -q 'android:debuggable="true"' "$dev_manifest"; then
+            echo "::error file=$dev_manifest::the dev channel must be debuggable (§12, research 07 R1)"
+            exit 1
+          fi
+          echo "dev is debuggable: $dev_manifest"
+          if ! grep -q 'EvalReceiver' "$dev_manifest"; then
+            echo "::error file=$dev_manifest::the dev channel must declare EvalReceiver (§12 D10)"
+            exit 1
+          fi
+          echo "dev declares EvalReceiver: $dev_manifest"
+
+          mapfile -t prod_manifests < <(find artifacts -name AndroidManifest.xml -path '*prodRelease*' | sort)
+          if [ "${#prod_manifests[@]}" -eq 0 ]; then
+            echo "::error::the prod merged manifest is not in the artifact"
+            exit 1
+          fi
+          status=0
+          for manifest in "${prod_manifests[@]}"; do
+            for needle in EvalReceiver APPROVE_GATE testOnly; do
+              if grep -q "$needle" "$manifest"; then
+                echo "::error file=$manifest::the prod channel must not contain '$needle' (§12)"
+                status=1
+              else
+                echo "prod without $needle: $manifest"
+              fi
+            done
           done
           exit $status
       - name: Native library set of both APKs

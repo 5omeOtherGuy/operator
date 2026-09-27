@@ -271,8 +271,9 @@ sealed interface ToolCall {
 
 /**
  * Outcome of one [ToolCall], §7.5 (`Ok | Failed | Unverified | Refused | NeedsConfirmation |
- * Cancelled`, narrowed to the four states M1 needs). `Ok` requires positive evidence; the return
- * value of a node action alone never counts (§7.5).
+ * Cancelled`), one state per §7.5 name: [Done], [Failed], [Unverified], [Refused],
+ * [NeedsApproval], [Cancelled]. `Ok` requires positive evidence; the return value of a node action
+ * alone never counts (§7.5).
  */
 sealed interface ExecResult {
     /** §7.5 `Ok`: the post-check produced positive evidence (described in [evidence]). */
@@ -302,15 +303,44 @@ enum class ApprovalMethod { VOLUME_HOLD, BIOMETRIC_STRONG }
  * the contents of fields edited in this task
  * (`HMAC(K_boot, taskId‖step‖sha256(canonicalArgs)‖screenSignature‖sha256(editedFieldContents)‖nonce)`).
  * It expires after 30 s. The executor re-reads the screen and re-checks all of it just before acting
- * (§7.4 step 11, R12); the HMAC is recomputed from these fields, so it is not stored here.
+ * (§7.4 step 11, R12) and asks [ApprovalVerifier] to recompute the HMAC from these fields.
  */
 data class ApprovalToken(
     /** The nonce / pending id of §9.2 item 1. */
     val id: String,
+    /** §9.2 item 5: the task and step the approval was given for; a token never carries over to another step. */
+    val taskId: String,
+    val step: Int,
     val call: ToolCall,
     val screenSignature: ScreenSignature,
     val editedFieldContents: Map<ElementKey, String>,
     val method: ApprovalMethod,
     val issuedAtMs: Long,
     val expiresAtMs: Long,
+    /**
+     * Hex `HMAC(K_boot, taskId‖step‖sha256(canonicalArgs)‖screenSignature‖sha256(editedFieldContents)‖id)`,
+     * minted by the gate (S8). Only [ApprovalVerifier] can check it; K_boot never leaves the gate.
+     */
+    val mac: String,
 )
+
+/**
+ * §9.2 item 5: what an approval is bound to. The executor builds it from the call it is about to run
+ * and the screen it just re-read; the gate mints the token over exactly these values.
+ */
+data class ApprovalBinding(
+    val taskId: String,
+    val step: Int,
+    val call: ToolCall,
+    val screenSignature: ScreenSignature,
+    val editedFieldContents: Map<ElementKey, String>,
+)
+
+/**
+ * §9.2 item 5, §7.4 step 11: implemented by the gate (S8), consumed by the executor (S3). Returns true
+ * only if the MAC is valid, the token is unexpired and unused, and it was minted for exactly [current];
+ * a true result consumes the token (single use).
+ */
+interface ApprovalVerifier {
+    fun verifyAndConsume(token: ApprovalToken, current: ApprovalBinding, nowMs: Long): Boolean
+}

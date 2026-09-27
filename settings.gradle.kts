@@ -19,11 +19,11 @@ rootProject.name = "operator"
 // just a JDK 17: `./gradlew :agent-core:test` must work there (docs/m1/PLAN.md).
 include(":agent-core")
 
-// The Android modules need an SDK to configure (compileSdk 36): :app, :llm-api, :llm, :fixture.
-// They are included only when one is present, so the JDK-only path above stays usable.
+// The Android modules need an SDK to configure (compileSdk 36): :app, :llm-api, :llm, :llm-stub,
+// :fixture. They are included only when one is present, so the JDK-only path above stays usable.
 // The scaffold's `:llama` include is gone: :llm compiles the upstream lib sources in place from the
 // pinned submodule instead (FOUNDATION §2.2, §4.2 C2, ADR-0005).
-val operatorAndroidModules = listOf(":app", ":llm-api", ":llm", ":fixture")
+val operatorAndroidModules = listOf(":app", ":llm-api", ":llm", ":llm-stub", ":fixture")
 
 val sdkDirFromLocalProperties: String? = file("local.properties")
     .takeIf { it.isFile }
