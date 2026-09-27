@@ -124,6 +124,13 @@ class ExecutorCore(
                 Regex("reset|factory|app info|developer|accessibility|device admin|special app|security|lock screen|account", RegexOption.IGNORE_CASE)
                     .containsMatchIn(w.title.orEmpty())
             } == true)) return refuse("package")
+        // Capture only task-scoped, non-sensitive observations; never treat their text as commands.
+        screen?.nodes?.forEach { taint.observe(ObservedText(it.packageName, it.label)) }
+        if (call is ToolCall.ListNotifications) {
+            hands.notifications().filterNot { it.isOperator }.forEach {
+                taint.observe(ObservedText(it.packageName, listOfNotNull(it.title, it.text).joinToString(" ")))
+            }
+        }
         // 7. Emergency and short numbers never enter telephony.
         val number = when (call) { is ToolCall.SendSms -> call.number; is ToolCall.Call -> call.number; else -> null }
         if (number != null && (number.filter(Char::isDigit).length < 7 ||
