@@ -74,10 +74,4 @@ kotlin {
 dependencies {
     api(project(":llm-api"))
     implementation(libs.kotlinx.coroutines.android)
-
-    // F0 placeholder: the `:llm` service that this module will implement is still the stub in
-    // :llm-stub, so the dev and prod channels get a declared, bindable service while the native
-    // engine is being written. S1 declares the real service in llm/src/main/AndroidManifest.xml and
-    // drops this dependency.
-    implementation(project(":llm-stub"))
 }
