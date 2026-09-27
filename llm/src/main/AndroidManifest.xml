@@ -6,4 +6,9 @@
      <service android:name="dev.operator.llm.LlmService" android:exported="false"
      android:process=":llm"/> declared in this manifest.
      Same UID and app id as dev.operator. No INTERNET permission here (§4.8, C12). -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service android:name="dev.operator.llm.LlmService"
+            android:exported="false" android:process=":llm" />
+    </application>
+</manifest>
