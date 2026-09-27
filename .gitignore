@@ -1,0 +1,16 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+
+# Model weights and runtime data (never committed)
+*.gguf
+models/
