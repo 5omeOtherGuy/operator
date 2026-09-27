@@ -215,6 +215,9 @@ class ExecutorCoreTest {
         assertTrue(f.run(ToolCall.LaunchApp("example.app")) is ExecResult.NeedsApproval)
         assertEquals(RiskClass.R2, f.gate.last!!.riskClass)
         assertEquals(0, f.effects)
+        f.ctx.classifier = false
+        assertTrue(f.run(ToolCall.LaunchApp("example.app")) is ExecResult.NeedsApproval)
+        assertEquals(0, f.effects)
     }
 
     @Test fun `category seeds host category and unknown app all gate UI`() = runBlocking {

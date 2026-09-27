@@ -34,7 +34,7 @@ class ExecutorCore(
     private val limits = RateLimits(clock)
     private val usedTokens = mutableSetOf<String>()
     private val edited = mutableMapOf<ElementKey, String>()
-    private val pending = mutableMapOf<String, String>()
+    private val pending = mutableMapOf<String, Pair<String, RiskClass>>()
     private val mutex = Mutex()
 
     /** Called at each owner task boundary, before accepting its first observation. */
@@ -181,6 +181,8 @@ class ExecutorCore(
         }
         risk = if (raised || context.irreversible(call))
             maxOf(base, ToolCatalog.risers[call::class] ?: RiskClass.R2) else base
+        risk = maxOf(risk, pending.values.filter { it.first == call.toString() }
+            .maxOfOrNull { it.second } ?: risk)
         val irreversible = risk == RiskClass.R2 || risk == RiskClass.R3
         limits.refusal(call, ui, irreversible)?.let { return refuse(it) }
         // 10. Disarm, stop, and hard ceiling.
@@ -193,7 +195,7 @@ class ExecutorCore(
                 val source = if (node != null && screen != null) context.screenContext(screen, node) else null
                 if (node != null && (label == null || source == null)) return refuse("card_context")
                 val pendingId = "${clock.monotonicMs()}:${pending.size}"
-                pending[pendingId] = id
+                pending[pendingId] = id to risk
                 val card = GateCard(
                     if (node != null) "${call.name}: ${node.label.ifBlank { "unlabelled target" }} in $label (${node.packageName})"
                     else "Confirm ${call.name}",
@@ -207,7 +209,7 @@ class ExecutorCore(
                 when (val decision = gate.request(card)) {
                     is GateResult.Approved -> {
                         pending.remove(pendingId)
-                        pending[decision.token.id] = id
+                        pending[decision.token.id] = id to risk
                         return result(ExecResult.NeedsApproval(decision.token.id))
                     }
                     is GateResult.Denied -> {
@@ -220,7 +222,7 @@ class ExecutorCore(
                     }
                 }
             }
-            if (pending[approval.id] != id || approval.id in usedTokens ||
+            if (pending[approval.id] != (id to risk) || approval.id in usedTokens ||
                 !context.authentic(approval, arguments(call)) ||
                 approval.call != call || approval.issuedAtMs > clock.monotonicMs() ||
                 approval.expiresAtMs <= clock.monotonicMs() || approval.expiresAtMs - approval.issuedAtMs > 30_000 ||
