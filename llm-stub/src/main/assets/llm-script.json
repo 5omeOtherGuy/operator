@@ -1,0 +1,28 @@
+{
+  "generate": [
+    {
+      "tokens": [
+        "{\"a\":\"done\",\"answer\":\"Scripted emulator response\"}"
+      ],
+      "stats": {
+        "nPrompt": 8,
+        "nGen": 1,
+        "tPrefillMs": 8,
+        "tDecodeMs": 1,
+        "loadMs": 0,
+        "ppTps": 1000.0,
+        "tgTps": 1000.0,
+        "backend": "CPU",
+        "cpuVariant": "stub"
+      }
+    }
+  ],
+  "labelLogits": [
+    {
+      "rows": [
+        [1.0],
+        [0.0]
+      ]
+    }
+  ]
+}

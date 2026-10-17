@@ -32,4 +32,6 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlinx.coroutines.android)
+    implementation(project(":agent-core"))
+    testImplementation(libs.junit)
 }
