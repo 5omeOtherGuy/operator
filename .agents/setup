@@ -35,6 +35,11 @@ test -d "$sdk/platforms/android-36" && test -d "$sdk/build-tools/35.0.0"
 # Gradle and scripts/gate read sdk.dir from the git-ignored local.properties.
 [ -f local.properties ] || echo "sdk.dir=$sdk" > local.properties
 
+step "full history (the gate's secret scan reads all of it)"
+if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+  git fetch --quiet --unshallow origin
+fi
+
 step "llama.cpp submodule"
 git submodule update --init --depth 1
 

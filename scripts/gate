@@ -21,6 +21,8 @@ fi
 [ -f third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts ] \
   || fail "the llama.cpp submodule is not checked out (git submodule update --init --depth 1)"
 command -v gitleaks > /dev/null || fail "gitleaks is not installed; the secret scan cannot run"
+[ "$(git rev-parse --is-shallow-repository)" = false ] \
+  || fail "shallow clone: the secret scan needs the whole history (git fetch --unshallow origin)"
 
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
