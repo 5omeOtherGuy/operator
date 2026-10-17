@@ -17,3 +17,17 @@ artifacts/
 # Model weights and runtime data (never committed)
 *.gguf
 models/
+
+# Local environment and secrets
+.env*
+!.env.example
+
+# Agent scratch and orb portals
+.amp/in/
+.amp/portals/*
+
+# Editors and OS files
+.vscode/
+*.swp
+*~
+.DS_Store
