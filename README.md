@@ -2,7 +2,7 @@
 
 A local LLM that operates an Android phone. The model runs on the device, and an app on the same device carries out its actions. Nothing leaves the phone.
 
-Status: planning. No code yet.
+Status: prototype. Development is paused; `main` holds the M1 foundation (module skeleton, frozen core API, CI), and nothing is installable or usable yet.
 
 ## Design
 
@@ -21,12 +21,11 @@ Status: planning. No code yet.
 
 The model reads untrusted text: web pages, notifications, messages. Any action that can't be undone (send, pay, delete, install, change settings) needs confirmation on screen from the user. Text the model reads from the screen is data, never instructions.
 
-## First milestone
+## First milestone (M1)
 
-1. Termux: llama.cpp `llama-server` with Bonsai 8B on localhost. Measure tokens/s and check that tool calls are reliable.
-2. A minimal app with an accessibility service exposing `read_screen`, `tap`, `type`, `swipe`, `back`, `home`, `open_app`.
-3. An agent loop between them, with the confirmation gate.
-4. Device owner: move the admin actions (install, uninstall, permissions) from the UI path to `DevicePolicyManager`.
+M1 is defined in [`docs/design/FOUNDATION.md`](docs/design/FOUNDATION.md) §14: one `dev` APK, built only in GitHub Actions from a tagged commit and installed on the reference phone by the §10.1 runbook, passes every fixed exit criterion, and its numbers are stored in `metrics.json` under that tag. A stage 0 benchmark spike comes first (`llama-bench` on the phone and the unchanged upstream `llama.android` app); it replaces the earlier Termux `llama-server` plan, and the device owner moves to M2.
+
+`main` contains the foundation: the Gradle modules `:agent-core`, `:app`, `:llm-api`, `:llm`, `:llm-stub` and `:fixture` with the M1 components stubbed, the frozen `:agent-core` API, the `:llm` AIDL surface and the CI workflow `.github/workflows/build.yml`. The slices that implement M1 are listed in [`docs/m1/PLAN.md`](docs/m1/PLAN.md); progress is tracked in the M1 epic, issue [#30](https://github.com/5omeOtherGuy/operator/issues/30).
 
 Reference device: OnePlus 13 (SM8750, 16 GB RAM), OxygenOS 16.
 
