@@ -5,10 +5,10 @@ This file is the lead's slice table and the restart point. Later changes are app
 
 ## Rules
 
-- One slice = one branch `m1/<id>-<slug>` = one worktree `~/projects/operator-<id>` = one writer = one PR against `main`.
+- One slice = one branch `m1/<id>-<slug>` = one worktree of its own = one writer = one PR against `main`.
 - A slice touches only its owned paths. Shared files (table below) change only in F0, or by an append-only edit named in the slice brief.
 - Android code builds only in GitHub Actions (no Android SDK on the laptop). `:agent-core` is pure Kotlin/JVM and runs locally: `./gradlew :agent-core:test` (JDK 17).
-- Landing: CI green on the PR head, one independent review (GPT-6 Sol), the lead merges (squash).
+- Landing: CI green on the PR head, one independent review (GPT-6 Sol), the lead merges with a merge commit, not squash, so slice branches keep the F0 ancestry (M1 epic #30).
 - Design text is the specification. A slice cites the sections it implements; a conflict between design and code is reported, not improvised.
 
 ## Slices

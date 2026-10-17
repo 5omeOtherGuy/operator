@@ -3,7 +3,7 @@
 Date: 2026-09-27. Reviewer role: adversarial review of the synthesis on branch `design/foundation`. Design only: no builds, no CI runs, no device actions.
 
 **Read in full:** `README.md`, `docs/design/FOUNDATION.md`, `docs/design/OPEN-QUESTIONS.md`, `docs/adr/README.md` and ADR-0001 to ADR-0015.
-**Read to check claims:** research notes 02, 03, 05 and 06 in full; the relevant sections of 01 and 07; `/home/phaseonebig/op13/REPORT.md`; op13's draft build files.
+**Read to check claims:** research notes 02, 03, 05 and 06 in full; the relevant sections of 01 and 07; op13's `REPORT.md`, an external device report not in this repository; op13's draft build files.
 
 **Tags.** **VERIFIED [n]** means I re-checked it myself against source n (list at the end). **UNVERIFIED** means not checked, followed by what would check it. **INFERENCE** means my own reasoning. `[01§F1.1]` means research note 01, section F1.1.
 
@@ -106,7 +106,7 @@ Findings: **6 High, 11 Medium, 9 Low.**
 
 All accessed 2026-09-27.
 
-1. llama.cpp submodule at `95887577ab5f` (b11205), local: `/home/phaseonebig/projects/operator/third_party/llama.cpp`. Files: `ggml/include/ggml.h`, `ggml/src/ggml-common.h`, `ggml/src/ggml-cpu/repack.cpp`, `ggml/src/ggml-opencl/ggml-opencl.cpp`, `ggml/src/ggml-vulkan/`, `ggml/src/ggml-hexagon/`, `ggml/src/CMakeLists.txt` L525-540, `include/llama.h` L405-414, `src/models/qwen3.cpp`, and `examples/llama.android/{app/src/main/AndroidManifest.xml, lib/build.gradle.kts, lib/src/main/cpp/CMakeLists.txt, lib/src/main/cpp/ai_chat.cpp, lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt}`.
+1. llama.cpp submodule at `95887577ab5f` (b11205), local: https://github.com/ggml-org/llama.cpp/tree/95887577ab5fead779581a7030a83c7752ff3234. Files: `ggml/include/ggml.h`, `ggml/src/ggml-common.h`, `ggml/src/ggml-cpu/repack.cpp`, `ggml/src/ggml-opencl/ggml-opencl.cpp`, `ggml/src/ggml-vulkan/`, `ggml/src/ggml-hexagon/`, `ggml/src/CMakeLists.txt` L525-540, `include/llama.h` L405-414, `src/models/qwen3.cpp`, and `examples/llama.android/{app/src/main/AndroidManifest.xml, lib/build.gradle.kts, lib/src/main/cpp/CMakeLists.txt, lib/src/main/cpp/ai_chat.cpp, lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt}`.
 2. GitHub API, PR #23492: https://api.github.com/repos/ggml-org/llama.cpp/pulls/23492
 3. Hugging Face file trees: https://huggingface.co/api/models/prism-ml/Bonsai-8B-gguf/tree/main and https://huggingface.co/api/models/prism-ml/Bonsai-27B-gguf/tree/main
 4. Bonsai 8B model card: https://huggingface.co/prism-ml/Bonsai-8B-gguf/raw/main/README.md
@@ -134,8 +134,8 @@ All accessed 2026-09-27.
     - `core/java/android/content/Intent.java` L1213;
     - `packages/modules/Permission/+/refs/tags/android-16.0.0_r4/PermissionController/res/xml/roles.xml` L109, L115.
 20. GitHub Actions limits: https://docs.github.com/en/actions/reference/limits. Runner image (NDK row): https://raw.githubusercontent.com/actions/runner-images/main/images/ubuntu/Ubuntu2404-Readme.md
-21. `/home/phaseonebig/op13/REPORT.md`
-22. op13 draft, read only: `/home/phaseonebig/projects/operator/app/build.gradle.kts`, `/home/phaseonebig/projects/operator/.github/workflows/build.yml`
+21. op13's `REPORT.md`, an external device report not in this repository
+22. op13 draft (uncommitted, not in this repository), read only: `app/build.gradle.kts`, `.github/workflows/build.yml`
 
 ## Disposition
 

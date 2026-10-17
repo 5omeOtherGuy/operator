@@ -488,7 +488,7 @@ All accessed 2026-09-27. AOSP files marked `android16-release` were fetched from
 27. https://www.androidauthority.com/android-17-beta-2-advanced-protection-mode-accessibility-apps-3648860/
 28. https://gadgets.beebom.com/guides/how-to-switch-off-oneplus-phones
 29. https://github.com/ggml-org/whisper.cpp/tree/master/examples
-30. /home/phaseonebig/projects/operator/third_party/llama.cpp/examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt, .../InferenceEngine.kt, .../lib/src/main/cpp/ai_chat.cpp, .../lib/build.gradle.kts (submodule @ 95887577ab5f)
-31. op13 draft (read-only): /home/phaseonebig/projects/operator/app/src/main/java/dev/operator/ScreenService.kt, ScreenReader.kt, app/build.gradle.kts, settings.gradle.kts, .github/workflows/build.yml
-32. /home/phaseonebig/op13/REPORT.md
-33. /home/phaseonebig/brain/wiki/decisions/adr-0012-typed-decide-seam-jev-backend.md
+30. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt, .../InferenceEngine.kt, .../lib/src/main/cpp/ai_chat.cpp, .../lib/build.gradle.kts (submodule @ 95887577ab5f)
+31. op13 draft (uncommitted, not in this repository), read-only: app/src/main/java/dev/operator/ScreenService.kt, ScreenReader.kt, app/build.gradle.kts, settings.gradle.kts, .github/workflows/build.yml
+32. op13's REPORT.md, an external device report not in this repository
+33. adr-0012-typed-decide-seam-jev-backend.md in the owner's private notes (external, not in this repository)

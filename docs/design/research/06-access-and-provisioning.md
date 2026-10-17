@@ -352,6 +352,6 @@ The phone-owning session runs this; there are no device actions from this lane. 
 35. XLogcatManager README (secondary, Android 13 LogcatManager behaviour): https://github.com/agnostic-apollo/XLogcatManager
 36. Android Authority, Advanced Protection and accessibility (secondary): https://www.androidauthority.com/android-17-beta-2-advanced-protection-mode-accessibility-apps-3648860/
 37. Hail issue #317 ("several users" error, community): https://github.com/aistra0528/Hail/issues/317
-38. Device report: /home/phaseonebig/op13/REPORT.md
-39. Project README: /home/phaseonebig/projects/operator-design/README.md
+38. Device report: op13's REPORT.md, an external device report not in this repository
+39. Project README: the design-time README.md, https://github.com/5omeOtherGuy/operator/blob/8398c41565d8f8af7ce8c97eb6b1cb645ad13c34/README.md
 40. `UserRestrictionsUtils.java` @ r4: https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-16.0.0_r4/services/core/java/com/android/server/pm/UserRestrictionsUtils.java

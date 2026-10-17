@@ -311,6 +311,6 @@ Deferred to on-device measurement: the encoder for CLM (E3/E4/E5); whether CLM b
 37. Geifman, El-Yaniv, "Selective Classification for Deep Neural Networks", https://arxiv.org/abs/1705.08500, accessed 2026-09-27
     37b. https://scikit-learn.org/stable/modules/calibration.html (sigmoid vs isotonic, ~1000-sample guidance), accessed 2026-09-27
 38. Kadavath et al., "Language Models (Mostly) Know What They Know", https://arxiv.org/abs/2207.05221, accessed 2026-09-27
-39. /home/phaseonebig/brain/wiki/decisions/adr-0012-typed-decide-seam-jev-backend.md, accessed 2026-09-27
-40. /home/phaseonebig/projects/operator-design/README.md, accessed 2026-09-27
+39. adr-0012-typed-decide-seam-jev-backend.md in the owner's private notes (external, not in this repository), accessed 2026-09-27
+40. the design-time README.md, https://github.com/5omeOtherGuy/operator/blob/8398c41565d8f8af7ce8c97eb6b1cb645ad13c34/README.md, accessed 2026-09-27
 41. https://openjdk.org/jeps/537 (Vector API, twelfth incubator; search result), accessed 2026-09-27

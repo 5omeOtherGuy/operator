@@ -327,12 +327,12 @@ Reading the table (INFERENCE):
 
 ## Sources (all accessed 2026-09-27)
 
-1. llama.cpp source at `9588757` (2026-09-26): `/home/phaseonebig/projects/operator/third_party/llama.cpp`. Files cited: `ggml/include/ggml.h`, `ggml/src/ggml-common.h`, `ggml/src/ggml-cpu/{arch/arm/quants.c, arch/arm/repack.cpp, repack.cpp, ggml-cpu.c, ggml-cpu.cpp, kleidiai/kleidiai.cpp, CMakeLists.txt}`, `ggml/src/CMakeLists.txt`, `ggml/src/ggml-opencl/{ggml-opencl.cpp, CMakeLists.txt}`, `ggml/src/ggml-vulkan/{ggml-vulkan.cpp, CMakeLists.txt}`, `ggml/src/ggml-hexagon/{ggml-hexagon.cpp, CMakeLists.txt}`, `include/llama.h`, `src/{llama-model-loader.cpp, llama-memory-recurrent.cpp, llama-hparams.cpp, llama-model.cpp, llama-arch.h}`, `common/{sampling.cpp, common.h, speculative.cpp, json-schema-to-grammar.cpp}`, `tools/server/server-context.cpp`.
+1. llama.cpp source at `9588757` (2026-09-26): https://github.com/ggml-org/llama.cpp/tree/95887577ab5fead779581a7030a83c7752ff3234. Files cited: `ggml/include/ggml.h`, `ggml/src/ggml-common.h`, `ggml/src/ggml-cpu/{arch/arm/quants.c, arch/arm/repack.cpp, repack.cpp, ggml-cpu.c, ggml-cpu.cpp, kleidiai/kleidiai.cpp, CMakeLists.txt}`, `ggml/src/CMakeLists.txt`, `ggml/src/ggml-opencl/{ggml-opencl.cpp, CMakeLists.txt}`, `ggml/src/ggml-vulkan/{ggml-vulkan.cpp, CMakeLists.txt}`, `ggml/src/ggml-hexagon/{ggml-hexagon.cpp, CMakeLists.txt}`, `include/llama.h`, `src/{llama-model-loader.cpp, llama-memory-recurrent.cpp, llama-hparams.cpp, llama-model.cpp, llama-arch.h}`, `common/{sampling.cpp, common.h, speculative.cpp, json-schema-to-grammar.cpp}`, `tools/server/server-context.cpp`.
    (Numbers 2-5, 7-8 and 12-17 are unused; those source files are cited as [1: path].)
-6. `/home/phaseonebig/projects/operator/third_party/llama.cpp/docs/backend/OPENCL.md`; also https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/OPENCL.md
-9. `/home/phaseonebig/projects/operator/third_party/llama.cpp/docs/backend/snapdragon/README.md`
-10. `/home/phaseonebig/projects/operator/third_party/llama.cpp/.github/workflows/{build-android.yml, build-and-test-snapdragon.yml}`
-11. `/home/phaseonebig/projects/operator/third_party/llama.cpp/examples/llama.android/lib/` (`build.gradle.kts`, `src/main/cpp/CMakeLists.txt`, `src/main/cpp/ai_chat.cpp`, `src/main/java/com/arm/aichat/InferenceEngine.kt`)
+6. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/docs/backend/OPENCL.md; also https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/OPENCL.md
+9. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/docs/backend/snapdragon/README.md
+10. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/.github/workflows/{build-android.yml, build-and-test-snapdragon.yml}
+11. https://github.com/ggml-org/llama.cpp/tree/95887577ab5fead779581a7030a83c7752ff3234/examples/llama.android/lib/ (`build.gradle.kts`, `src/main/cpp/CMakeLists.txt`, `src/main/cpp/ai_chat.cpp`, `src/main/java/com/arm/aichat/InferenceEngine.kt`)
 18. https://api.github.com/search/issues?q=repo:ggml-org/llama.cpp+is:pr+is:merged+q1_0 ; https://api.github.com/repos/ggml-org/llama.cpp/pulls/{21273,24448,25160,23492,21539} ; Q2_0 PR search (#25419, #25430, #25707)
 19. https://github.com/ggml-org/llama.cpp/pull/23492
 20. https://github.com/ggml-org/llama.cpp/pull/21273
@@ -358,7 +358,7 @@ Reading the table (INFERENCE):
 40. https://developer.android.com/ndk/reference/group/a-performance-hint
 41. https://github.com/wyl2607/oneplus13-performance-investigation
 42. https://www.gsmarena.com/oneplus_13-review-2777p4.php (search-result snippet only, not fetched)
-43. `/home/phaseonebig/op13/REPORT.md`
-44. `/home/phaseonebig/projects/operator/{app/build.gradle.kts, settings.gradle.kts, .github/workflows/build.yml, .gitmodules}` (op13's uncommitted draft)
+43. op13's `REPORT.md`, an external device report not in this repository
+44. `{app/build.gradle.kts, settings.gradle.kts, .github/workflows/build.yml, .gitmodules}` (op13's uncommitted draft, not in this repository)
 45. https://github.com/snapdragon-toolchain/hexagon-sdk ; https://github.com/snapdragon-toolchain
 46. https://prismml.com/news/bonsai-27b

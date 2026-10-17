@@ -110,7 +110,7 @@ Out of scope (other lanes):
   - Whether `VmHWM` is readable for our own process under SELinux: INFERENCE yes (own process); verify in E-05.
 - **USB tooling on the laptop.**
   - `adb` 1.0.41 / 34.0.4 (Debian package) at `/usr/bin/adb`, plus `fastboot` **VERIFIED (command output 2026-09-27)**.
-  - `/home/phaseonebig/op13/tools` holds firmware tools only: `payload-dumper-go`, `avbtool`, `arbextract`. No adb helpers.
+  - op13's `tools` directory (external, not in this repository) holds firmware tools only: `payload-dumper-go`, `avbtool`, `arbextract`. No adb helpers.
   - The reusable pattern is `collect.sh`: `timeout 20 adb -s <serial> shell …`, dumping into timestamped directories [39].
 
 ### F5. CI facts
@@ -595,13 +595,13 @@ All accessed 2026-09-27.
 32. https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/res/AndroidManifest.xml (DUMP = signature|privileged|development; WRITE_SECURE_SETTINGS levels)
 33. https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/packages/Shell/AndroidManifest.xml (shell permissions: READ_SMS, READ_CALENDAR, READ_CONTACTS, DUMP, SET_ALARM, MEDIA_CONTENT_CONTROL, …)
 34. https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/java/android/os/BatteryManager.java and …/PowerManager.java (CURRENT_NOW, CHARGE_COUNTER, ENERGY_COUNTER; getThermalHeadroom)
-35. Draft files, read-only: /home/phaseonebig/projects/operator/.github/workflows/build.yml, /home/phaseonebig/projects/operator/app/build.gradle.kts, /home/phaseonebig/projects/operator/build.gradle.kts, /home/phaseonebig/projects/operator/settings.gradle.kts, /home/phaseonebig/projects/operator/gradle/libs.versions.toml, /home/phaseonebig/projects/operator/gradle.properties, /home/phaseonebig/projects/operator/.gitmodules, /home/phaseonebig/projects/operator/app/src/main/java/dev/operator/ScreenService.kt, /home/phaseonebig/projects/operator/app/src/main/java/dev/operator/ScreenReader.kt; `git submodule status` → 9588757 (b11205)
-36. /home/phaseonebig/projects/operator/third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts, …/lib/src/main/cpp/CMakeLists.txt, …/llama.android/gradle/wrapper/gradle-wrapper.properties, …/llama.android/gradle/libs.versions.toml
-37. /home/phaseonebig/projects/operator/third_party/llama.cpp/ggml/src/CMakeLists.txt (lines 487–586: Android arm64 CPU variants)
-38. /home/phaseonebig/projects/operator/third_party/llama.cpp/.github/workflows/build-android.yml (gradle build job; NDK CMake job; ccache disabled note)
-39. /home/phaseonebig/op13/REPORT.md and /home/phaseonebig/op13/collect.sh (device facts; adb usage pattern; USB not charging at 80 %)
+35. op13 draft files (uncommitted, not in this repository), read-only: .github/workflows/build.yml, app/build.gradle.kts, build.gradle.kts, settings.gradle.kts, gradle/libs.versions.toml, gradle.properties, .gitmodules, app/src/main/java/dev/operator/ScreenService.kt, app/src/main/java/dev/operator/ScreenReader.kt; `git submodule status` → 9588757 (b11205)
+36. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/examples/llama.android/lib/build.gradle.kts, …/lib/src/main/cpp/CMakeLists.txt, …/llama.android/gradle/wrapper/gradle-wrapper.properties, …/llama.android/gradle/libs.versions.toml
+37. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/ggml/src/CMakeLists.txt (lines 487–586: Android arm64 CPU variants)
+38. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/.github/workflows/build-android.yml (gradle build job; NDK CMake job; ccache disabled note)
+39. op13's REPORT.md, an external device report not in this repository, and op13's collect.sh (external, not in this repository) (device facts; adb usage pattern; USB not charging at 80 %)
 40. `gh repo list` / `gh run list -R 5omeOtherGuy/operator` / `gh api repos/5omeOtherGuy/operator/actions/secrets` output, 2026-09-27 (public; 0 runs; 0 secrets)
 41. https://github.com/gradle/actions/blob/main/docs/setup-gradle.md (wrapper validation by default; cache written on the default branch only; `gradle-version`)
-42. /home/phaseonebig/projects/operator/third_party/llama.cpp/tools/ (llama-bench, cli, perplexity, …)
-43. Sibling lanes: /home/phaseonebig/projects/operator-design/docs/design/research/01-architecture-and-ux.md, …/03-decide.md, …/05-actions-and-safety.md
-44. /home/phaseonebig/projects/operator-design/README.md (control stack, testOnly plan, first-milestone sketch)
+42. https://github.com/ggml-org/llama.cpp/blob/95887577ab5fead779581a7030a83c7752ff3234/tools/ (llama-bench, cli, perplexity, …)
+43. Sibling lanes: docs/design/research/01-architecture-and-ux.md, …/03-decide.md, …/05-actions-and-safety.md
+44. the design-time README.md, https://github.com/5omeOtherGuy/operator/blob/8398c41565d8f8af7ce8c97eb6b1cb645ad13c34/README.md (control stack, testOnly plan, first-milestone sketch)

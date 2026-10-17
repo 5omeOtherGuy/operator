@@ -633,7 +633,7 @@ AOSP files [1–3], [5–17] are from `raw.githubusercontent.com/aosp-mirror/pla
 29. Android Authority, "Here's how Android 15 protects your two-factor authentication codes from malicious apps" (2024-10-21): https://www.androidauthority.com/android-15-two-factor-authentication-codes-3492585/
 30. Security Affairs, "Advanced Protection Mode in Android 17 prevents apps from misusing Accessibility Services" (2026-03-16): https://securityaffairs.com/189497/security/advanced-protection-mode-in-android-17-prevents-apps-from-misusing-accessibility-services.html
 31. Google, "Use accessibility shortcuts" (Android Accessibility Help): https://support.google.com/accessibility/android/answer/7650693
-32. /home/phaseonebig/brain/wiki/decisions/adr-0012-typed-decide-seam-jev-backend.md
-33. /home/phaseonebig/op13/REPORT.md
-34. /home/phaseonebig/projects/operator/app/src/main/java/dev/operator/ScreenService.kt and ScreenReader.kt (op13 draft, uncommitted)
-35. /home/phaseonebig/projects/operator-design/README.md
+32. adr-0012-typed-decide-seam-jev-backend.md in the owner's private notes (external, not in this repository)
+33. op13's REPORT.md, an external device report not in this repository
+34. app/src/main/java/dev/operator/ScreenService.kt and ScreenReader.kt (op13 draft, uncommitted, not in this repository)
+35. the design-time README.md, https://github.com/5omeOtherGuy/operator/blob/8398c41565d8f8af7ce8c97eb6b1cb645ad13c34/README.md

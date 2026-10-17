@@ -29,4 +29,4 @@ Numbered from 0001 without gaps. ADR-0001 is the owner's decision. All others ar
 | [0015](0015-evaluation-ci-and-milestones.md) | Evaluation harness, CI job graph and milestones | Proposed | 2026-09-27 | 12, 14 |
 | [0016](0016-owner-ux.md) | Owner UX: command entry, progress, questions, confirmation surfaces | Proposed | 2026-09-27 | 11 |
 
-The brain's ADR-0012 (typed decide seam, `/home/phaseonebig/brain/wiki/decisions/adr-0012-typed-decide-seam-jev-backend.md`) is an external reference. It is not part of this series.
+The brain's ADR-0012 (typed decide seam, `adr-0012-typed-decide-seam-jev-backend.md` in the owner's private notes, not in this repository) is an external reference. It is not part of this series.
