@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# The gate: everything a change to operator must pass, in one command (CI job `gate`).
+#   1. secret scan of the whole git history (gitleaks)
+#   2. :agent-core tests (pure JVM)
+#   3. every :app channel compiled without native code, and the JVM unit tests of :app (all three
+#      channels), :llm-api and :llm-stub
+# Needs JDK 17, an Android SDK (ANDROID_HOME, ANDROID_SDK_ROOT or sdk.dir in local.properties), the
+# llama.cpp submodule checked out and gitleaks on PATH. The native :llm build and the S-08 APK and
+# manifest checks stay in the `apk` and `checks` jobs of .github/workflows/build.yml.
+# Quiet on success; on failure it prints the failing step's output.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+fail() { echo "gate: $*" >&2; exit 1; }
+
+sdk_dir="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$sdk_dir" ] && [ -f local.properties ]; then
+  sdk_dir="$(sed -n 's/^sdk\.dir=//p' local.properties)"
+fi
+[ -n "$sdk_dir" ] && [ -d "$sdk_dir" ] || fail "no Android SDK found (set ANDROID_HOME); the Android modules cannot be checked"
+[ -f third_party/llama.cpp/examples/llama.android/lib/build.gradle.kts ] \
+  || fail "the llama.cpp submodule is not checked out (git submodule update --init --depth 1)"
+command -v gitleaks > /dev/null || fail "gitleaks is not installed; the secret scan cannot run"
+
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+
+step() {
+  local name="$1"
+  shift
+  if ! "$@" > "$log" 2>&1; then
+    cat "$log" >&2
+    fail "FAILED: $name"
+  fi
+}
+
+step "secret scan" gitleaks git --redact --no-banner --log-level warn .
+step "tests and compile" ./gradlew --quiet --console=plain -Poperator.noNative=true \
+  :agent-core:test \
+  :app:assembleDevDebug :app:assembleProdDebug :app:assembleEmulatorStubDebug \
+  :app:testDevDebugUnitTest :app:testProdDebugUnitTest :app:testEmulatorStubDebugUnitTest \
+  :llm-api:testDebugUnitTest :llm-stub:testDebugUnitTest

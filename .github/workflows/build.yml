@@ -1,6 +1,7 @@
 name: build
 
-# FOUNDATION §12 / ADR-0015 CI job graph, M1 subset:
+# FOUNDATION §12 / ADR-0015 CI job graph, M1 subset, plus the repository gate:
+#   gate   - scripts/gate: secret scan, :agent-core tests, NDK-free channel compile, Android unit tests
 #   jvm    - :agent-core tests on the JDK-only path (no Android SDK at all)
 #   kotlin - the whole :app channel matrix compiled, no native code
 #   apk    - dev (arm64-v8a, native :llm), emulatorStub (x86_64, Kotlin-only, no .so) and the fixture
@@ -26,6 +27,37 @@ env:
   OPERATOR_CMAKE_VERSION: 3.31.6
 
 jobs:
+  # The repository gate: exactly `scripts/gate`, the command AGENTS.md names. It needs the whole
+  # history for the secret scan and the llama.cpp submodule for the :llm sources.
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check out the llama.cpp submodule
+        run: git submodule update --init --depth 1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install gitleaks (pinned, checksum verified)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: scripts/gate
+        run: scripts/gate
+
   jvm:
     name: jvm (agent-core tests, JDK only)
     runs-on: ubuntu-24.04
