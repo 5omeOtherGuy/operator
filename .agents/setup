@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Orb setup for operator: what `scripts/gate` needs (JDK 17, an Android SDK, the llama.cpp
+# submodule and gitleaks). Idempotent; a warm run downloads nothing. The NDK for the native :llm
+# build is not installed here: that build runs in the CI `apk` job.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+step() { printf '\n== %s (%s)\n' "$1" "$(date +%T)"; }
+
+step "JDK 17"
+if ! dpkg -s openjdk-17-jdk-headless > /dev/null 2>&1; then
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq openjdk-17-jdk-headless > /dev/null
+fi
+java -version 2>&1 | head -n 1
+
+step "Android SDK (platform 36, build-tools 35.0.0)"
+sdk="$HOME/android-sdk"
+sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+if [ ! -x "$sdkmanager" ]; then
+  tmp="$(mktemp -d)"
+  curl -sSfL -o "$tmp/tools.zip" https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+  echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $tmp/tools.zip" | sha256sum -c - > /dev/null
+  unzip -q "$tmp/tools.zip" -d "$tmp"
+  mkdir -p "$sdk/cmdline-tools"
+  mv "$tmp/cmdline-tools" "$sdk/cmdline-tools/latest"
+  rm -rf "$tmp"
+fi
+if [ ! -d "$sdk/platforms/android-36" ] || [ ! -d "$sdk/build-tools/35.0.0" ]; then
+  # `yes` dies with SIGPIPE once sdkmanager stops reading; the directory checks decide success.
+  yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+  "$sdkmanager" "platforms;android-36" "build-tools;35.0.0" > /dev/null
+fi
+test -d "$sdk/platforms/android-36" && test -d "$sdk/build-tools/35.0.0"
+# Gradle and scripts/gate read sdk.dir from the git-ignored local.properties.
+[ -f local.properties ] || echo "sdk.dir=$sdk" > local.properties
+
+step "llama.cpp submodule"
+git submodule update --init --depth 1
+
+step "gitleaks"
+gitleaks_version=8.30.1
+if ! "$HOME/.local/bin/gitleaks" version 2> /dev/null | grep -qx "$gitleaks_version"; then
+  tmp="$(mktemp -d)"
+  archive="gitleaks_${gitleaks_version}_linux_x64.tar.gz"
+  curl -sSfL -o "$tmp/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${gitleaks_version}/$archive"
+  echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tmp/$archive" | sha256sum -c - > /dev/null
+  mkdir -p "$HOME/.local/bin"
+  tar -xzf "$tmp/$archive" -C "$HOME/.local/bin" gitleaks
+  rm -rf "$tmp"
+fi
+"$HOME/.local/bin/gitleaks" version
+
+step "Gradle wrapper"
+./gradlew --quiet --console=plain help > /dev/null
+
+step "Credentials (presence only)"
+# Nothing in the gate needs a credential; this only reports what the orb has.
+for name in GH_TOKEN GITHUB_TOKEN; do
+  if [ -n "${!name:-}" ]; then echo "$name: set"; else echo "$name: not set"; fi
+done
