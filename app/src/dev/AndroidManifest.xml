@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The dev-only eval surface (FOUNDATION §12, ADR-0015; §12 D10 moved the debug receiver into the
      dev source set). Merged into the `dev` flavour only, never into `prod` or `emulatorStub`.
-     Guarded by android.permission.DUMP, which the adb shell holds. -->
+     Exported so the laptop driver can `am broadcast` to it, but guarded twice: `android.permission.DUMP`
+     is signature|privileged|development, which the adb shell holds and an ordinary app cannot obtain,
+     and `EvalReceiver.isTrustedCaller` re-checks the Binder calling uid (shell 2000, root 0 or our own)
+     before acting. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
