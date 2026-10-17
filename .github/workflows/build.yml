@@ -16,8 +16,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
-  # Superseded PR runs are cancelled; every push to main runs to the end.
+  # Superseded PR runs are cancelled. Every other run gets a group of its own, so no push to main
+  # is cancelled, not even while it waits behind another run.
+  group: build-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
