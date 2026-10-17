@@ -25,7 +25,7 @@ env:
   # GitHub-hosted ubuntu images ship the SDK here and pre-accept the licences.
   ANDROID_HOME: /usr/local/lib/android/sdk
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  OPERATOR_NDK_VERSION: 29.0.13113456
+  OPERATOR_NDK_VERSION: 30.0.16248370
   OPERATOR_CMAKE_VERSION: 3.31.6
 
 jobs:

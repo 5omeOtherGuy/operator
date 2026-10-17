@@ -6,7 +6,6 @@
 // the Kotlin-only :llm-stub, so no variant of :app can pull x86_64 native code in (§4.2 R25).
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 val llamaCppDir = rootProject.layout.projectDirectory.dir("third_party/llama.cpp")
@@ -24,7 +23,7 @@ android {
     // Distinct from :llm-api's namespace (dev.operator.llm.api) on purpose: two modules with the same
     // namespace would both generate dev.operator.llm.R and the APK would fail to merge them.
     namespace = "dev.operator.llm.runtime"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
@@ -59,11 +58,17 @@ android {
         }
     }
 
-    sourceSets.getByName("main").java.srcDir(upstreamLibDir.dir("src/main/java").asFile)
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// The upstream lib's Kotlin sources, compiled in place (AGP 9 built-in Kotlin takes extra source
+// directories through the variant API).
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(upstreamLibDir.dir("src/main/java").asFile.absolutePath)
     }
 }
 

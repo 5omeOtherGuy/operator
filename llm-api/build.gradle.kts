@@ -2,7 +2,6 @@
 // ADR-0002). No client logic lives here; the suspend client wrappers of §2.2 come with S1.
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 android {
@@ -10,7 +9,7 @@ android {
     // only names this module's R/BuildConfig class and must differ from :llm's (duplicate namespaces
     // would produce duplicate R classes in the APK).
     namespace = "dev.operator.llm.api"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 33

@@ -1,19 +1,22 @@
 # Single version catalog for the operator build (F0 owns this file; slices append only with a lead decision).
-# AGP, Kotlin and the NDK follow third_party/llama.cpp/examples/llama.android at 9588757 (FOUNDATION §4.2, ADR-0005).
+# FOUNDATION §4.2 / ADR-0005 tied AGP, Kotlin and the NDK to third_party/llama.cpp/examples/llama.android at
+# 9588757. That example still pins AGP 8.13.2, Kotlin 2.3.0 and NDK 29.0.13113456 upstream; the build here moved
+# ahead of it (AGP 9 built-in Kotlin, NDK 30), and the submodule stays at 9588757 (its Kotlin and CMake sources
+# compile unchanged).
 [versions]
-agp = "8.13.2"
-kotlin = "2.3.0"
-ndk = "29.0.13113456"
+agp = "9.4.1"
+kotlin = "2.4.21"
+ndk = "30.0.16248370"
 
 # AndroidX
-core-ktx = "1.17.0"
-datastore-preferences = "1.2.0"
-lifecycle-service = "2.8.7"
+core-ktx = "1.19.1"
+datastore-preferences = "1.2.1"
+lifecycle-service = "2.11.0"
 biometric = "1.1.0"
 
 # Kotlin libraries
-coroutines = "1.10.2"
-serialization-json = "1.8.0"
+coroutines = "1.11.0"
+serialization-json = "1.11.0"
 
 # Testing
 androidx-junit = "1.3.0"
@@ -22,7 +25,6 @@ junit = "4.13.2"
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 jetbrains-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 
 [libraries]

@@ -3,17 +3,16 @@
 // install target, so that no operator variant needs network access. S12 fills it.
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 android {
     namespace = "dev.operator.fixture"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.operator.fixture"
         minSdk = 33
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0-M1"
     }

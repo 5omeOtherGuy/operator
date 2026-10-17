@@ -6,7 +6,6 @@
 // surface and the loop are identical on both channels.
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 android {
@@ -14,7 +13,7 @@ android {
     // namespaces: two modules with the same namespace would both generate dev.operator.llm.R and the
     // APK would fail to merge them.
     namespace = "dev.operator.llm.stub"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 33

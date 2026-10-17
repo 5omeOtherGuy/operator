@@ -3,18 +3,17 @@
 // (ADR-0002); the model lives in :llm (arm64 channels) or in the Kotlin-only :llm-stub (emulator).
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
 android {
     namespace = "dev.operator"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
         applicationId = "dev.operator"
         minSdk = 33
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0-M1"
     }
