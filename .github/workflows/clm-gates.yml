@@ -1,0 +1,332 @@
+name: clm-gates
+
+# CLM-8B fidelity gates G0-G3 (FOUNDATION §5.3-5.4; ADR-0007 decision 6; docs/design/research/03-decide.md
+# §F5.2-F5.4).
+#
+# Manual only. Every job here downloads models — the 75 MB head checkpoint, the bf16 shards of the E0
+# reference, and one 5.0-8.3 GB `*-outq2` quant per matrix leg — so nothing in this workflow runs on
+# push; `build.yml` keeps the push path model-free and this file is never referenced from it.
+#
+#   goldens   : the fixtures of agent-core/src/test/resources/clm regenerate identically under both
+#               Python fp32 backends, and the JVM golden tests pass.
+#   heads     : the pinned CLM_v0.1-8B.pt is downloaded, its sha256 checked against the §4.8 pin,
+#               converted to clm-heads-v0.1.safetensors without torch, and the Kotlin loader is run
+#               against it (ClmHeadsRealFileTest) with the Python reference of the same weights.
+#   reference : candidate E0 — the bf16 Qwen3 reference states of the corpus, layer-streamed from the
+#               safetensors shards one shard at a time (§F5.4), split over a matrix. The smoke pair
+#               (smoke-0.6b) additionally cross-checks the streamed path against HF transformers.
+#   gates     : G0 token parity and G1-G3 for every quant in the matrix, against the E0 reference and
+#               the converted heads, with the §5.4 default bars. Summary numbers only are printed and
+#               the JSON summaries are uploaded as artifacts.
+#   report    : one table over the matrix legs.
+#
+# A smoke run (`model: smoke-0.6b`) validates the whole machinery cheaply on Qwen3-0.6B — including the
+# E0 cross-check against HF and the llama.cpp extraction path — but skips G3: the CLM heads are 4096-d
+# and 0.6B states are 1024-d (03§F3.3 shows why a different width cannot be fed to them).
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "encoder pair: the pinned CLM-8B quants, or the cheap smoke pair"
+        type: choice
+        options: [clm-8b, smoke-0.6b]
+        default: clm-8b
+      quants:
+        description: 'JSON array of quants (clm-8b: Q4_K_M/Q6_K/Q8_0; smoke: Q8_0)'
+        type: string
+        default: '["Q4_K_M","Q6_K","Q8_0"]'
+      corpus_states:
+        description: "synthetic states in the corpus (60 states ≈ 4.5k texts·tokens)"
+        type: string
+        default: "40"
+      reference_shards:
+        description: "matrix width of the E0 reference"
+        type: string
+        default: "2"
+      g1_min_cos:
+        description: "G1 bar (§5.4 default 0.999)"
+        type: string
+        default: "0.999"
+      g3_median_dlogit:
+        description: "G3 bar (§5.4 default 0.5)"
+        type: string
+        default: "0.5"
+
+concurrency:
+  group: clm-gates-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # §4.8 pins (models.json of the lead's workspace); the converter re-checks the digest itself.
+  HEADS_SHA256: b2b4a8c9c2d39263eff78a351eb909a342ce9b3bf21a3f07c1d1bf15f1c4eda5
+  HEADS_REPO: Contrastive-LM/CLM-v0.1-8B
+  HEADS_FILE: CLM_v0.1-8B.pt
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+  HF_HUB_ENABLE_HF_TRANSFER: "0"
+
+jobs:
+  goldens:
+    name: goldens (fixtures + JVM golden tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: numpy
+        run: python3 -m pip install --quiet numpy
+      - name: the committed fixtures regenerate identically (numpy backend)
+        run: python3 tools/clm/make_goldens.py --check --backend numpy --out-dir agent-core/src/test/resources/clm
+      - name: the committed fixtures regenerate identically (pure-Python backend)
+        run: python3 tools/clm/make_goldens.py --check --backend pure --out-dir agent-core/src/test/resources/clm
+      - name: the two backends agree bit for bit
+        run: |
+          set -euo pipefail
+          python3 tools/clm/make_goldens.py --backend numpy --out-dir build/goldens-numpy
+          python3 tools/clm/make_goldens.py --backend pure --out-dir build/goldens-pure
+          diff -r build/goldens-numpy build/goldens-pure
+          echo "numpy and pure-Python fp32 backends produce identical fixtures"
+      - name: agent-core tests (JDK only, incl. the JVM goldens)
+        run: ./gradlew :agent-core:test --stacktrace --console=plain
+        env:
+          ANDROID_HOME: ""
+          ANDROID_SDK_ROOT: ""
+
+  heads:
+    name: heads (convert the pinned checkpoint, load it in Kotlin)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: numpy
+        run: python3 -m pip install --quiet numpy
+      - name: download the pinned head checkpoint
+        run: |
+          set -euo pipefail
+          mkdir -p build/clm-gates
+          curl -sSL -o "build/clm-gates/$HEADS_FILE" \
+            "https://huggingface.co/$HEADS_REPO/resolve/main/$HEADS_FILE"
+          echo "$HEADS_SHA256  build/clm-gates/$HEADS_FILE" | sha256sum -c -
+      - name: convert to safetensors (no torch)
+        run: |
+          set -euo pipefail
+          python3 tools/clm/convert_heads.py \
+            --source "build/clm-gates/$HEADS_FILE" \
+            --out build/clm-gates/clm-heads-v0.1.safetensors \
+            --inspect | tail -n 40
+      - name: Python reference of the same weights (from the checkpoint's own storages)
+        run: |
+          set -euo pipefail
+          python3 tools/clm/make_goldens.py --backend numpy \
+            --real-heads "build/clm-gates/$HEADS_FILE" \
+            --out build/clm-gates/clm-heads-golden.json
+      - name: the Kotlin loader reads the converted file and matches the Python reference
+        run: ./gradlew :agent-core:cleanTest :agent-core:test --no-build-cache --stacktrace --console=plain
+        env:
+          ANDROID_HOME: ""
+          ANDROID_SDK_ROOT: ""
+          CLM_HEADS_FILE: ${{ github.workspace }}/build/clm-gates/clm-heads-v0.1.safetensors
+          CLM_HEADS_GOLDEN: ${{ github.workspace }}/build/clm-gates/clm-heads-golden.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clm-heads
+          if-no-files-found: error
+          path: |
+            build/clm-gates/clm-heads-v0.1.safetensors
+            build/clm-gates/clm-heads-golden.json
+
+  prepare:
+    name: prepare (matrix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
+    steps:
+      - id: shards
+        env:
+          SHARDS: ${{ inputs.reference_shards }}
+        run: |
+          set -euo pipefail
+          python3 -c "import json,os; n=int(os.environ['SHARDS']); assert 1 <= n <= 8, 'reference_shards must be 1..8'; print('shards=' + json.dumps(list(range(n))))" >> "$GITHUB_OUTPUT"
+
+  reference:
+    name: reference E0 (${{ matrix.shard }})
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.prepare.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet numpy transformers
+          if [ "${{ inputs.model }}" = "smoke-0.6b" ]; then
+            python3 -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          fi
+      - name: corpus
+        run: python3 tools/clm/corpus.py --states "${{ inputs.corpus_states }}" --out build/corpus.jsonl
+      - name: the reference encoder's own two paths agree (streamed vs all-weights-resident)
+        run: python3 tools/clm/ref_encoder.py --selftest
+      - name: candidate E0, layer-streamed
+        run: |
+          set -euo pipefail
+          extra=""
+          if [ "${{ inputs.model }}" = "smoke-0.6b" ]; then extra="--hf-cross-check"; fi
+          python3 tools/clm/ref_encoder.py \
+            --model "${{ inputs.model == 'clm-8b' && 'Qwen/Qwen3-8B' || 'Qwen/Qwen3-0.6B' }}" \
+            --corpus build/corpus.jsonl \
+            --out "build/ref-${{ matrix.shard }}.npz" \
+            --shard "${{ matrix.shard }}" --shards "${{ inputs.reference_shards }}" \
+            --cache-dir build/clm-cache \
+            --max-text-tokens 2048 $extra
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clm-reference-${{ matrix.shard }}
+          if-no-files-found: error
+          path: build/ref-${{ matrix.shard }}.npz
+
+  gates:
+    name: gates ${{ matrix.quant }}
+    needs: [reference, heads]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        quant: ${{ fromJSON(inputs.quants) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: dependencies
+        run: python3 -m pip install --quiet numpy transformers
+      - name: download the quant
+        run: |
+          set -euo pipefail
+          mkdir -p build/models
+          if [ "${{ inputs.model }}" = "clm-8b" ]; then
+            url="https://huggingface.co/czl/CLM-v0.1-8B-GGUF/resolve/main/Qwen3-8B-${{ matrix.quant }}-outq2.gguf"
+          else
+            url="https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-${{ matrix.quant }}.gguf"
+          fi
+          echo "downloading $url"
+          curl -sSL -o "build/models/${{ matrix.quant }}.gguf" "$url"
+          ls -l build/models/
+      - name: download the heads and the E0 reference
+        uses: actions/download-artifact@v4
+        with:
+          path: build/clm-gates
+      - name: build llama.cpp from the pinned submodule
+        run: |
+          set -euo pipefail
+          cmake -B build/llama -S third_party/llama.cpp \
+            -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_UI=OFF -DGGML_NATIVE=ON
+          cmake --build build/llama --target llama-server -j "$(nproc)"
+      - name: corpus
+        run: python3 tools/clm/corpus.py --states "${{ inputs.corpus_states }}" --out build/corpus.jsonl
+      - name: merge the reference shards
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, numpy as np
+          parts = sorted(glob.glob("build/clm-gates/clm-reference-*/ref-*.npz"))
+          assert parts, "no reference shards were downloaded"
+          ids, states, counts = [], [], []
+          for part in parts:
+              data = np.load(part, allow_pickle=False)
+              ids.extend(str(x) for x in data["ids"])
+              states.append(data["states"])
+              counts.append(data["token_counts"])
+          np.savez("build/clm-gates/ref.npz",
+                   ids=np.array(ids), states=np.concatenate(states), token_counts=np.concatenate(counts),
+                   meta=np.array([parts[0]]))
+          print(f"reference: {len(ids)} texts from {len(parts)} shards")
+          PY
+      - name: G0-G3
+        run: |
+          set -euo pipefail
+          skip=""
+          if [ "${{ inputs.model }}" != "clm-8b" ]; then skip="--skip-g3"; fi
+          python3 tools/clm/gates.py run \
+            --llama-bin build/llama/bin \
+            --model "build/models/${{ matrix.quant }}.gguf" \
+            --corpus build/corpus.jsonl \
+            --reference build/clm-gates/ref.npz \
+            --heads build/clm-gates/clm-heads/clm-heads-v0.1.safetensors \
+            --hf-tokenizer "${{ inputs.model == 'clm-8b' && 'Qwen/Qwen3-8B' || 'Qwen/Qwen3-0.6B' }}" \
+            --out "build/clm-gates/summary-${{ matrix.quant }}.json" \
+            --g1-min-cos "${{ inputs.g1_min_cos }}" \
+            --g3-median-dlogit "${{ inputs.g3_median_dlogit }}" $skip
+      - name: llama.cpp server log (tail)
+        if: always()
+        run: tail -n 40 build/clm-gates/llama-server.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clm-summary-${{ matrix.quant }}
+          if-no-files-found: warn
+          path: build/clm-gates/summary-${{ matrix.quant }}.json
+
+  report:
+    name: report
+    needs: [gates]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: build/summaries
+      - name: table over the matrix legs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, json, os
+          rows = []
+          for path in sorted(glob.glob("build/summaries/clm-summary-*/summary-*.json")):
+              data = json.load(open(path))
+              g1 = data["g1_g2"]["g1_none"]
+              g3 = data["g3"]
+              rows.append((
+                  os.path.basename(path).split("summary-")[-1].replace(".json", ""),
+                  data["pass"],
+                  data["g0"]["parity"],
+                  g1.get("min"),
+                  g3.get("dlogit", {}).get("median"),
+                  g3.get("dlogit", {}).get("p95"),
+                  g3.get("top1_agreement"),
+              ))
+          print(f"{'quant':10s} {'pass':5s} {'G0 parity':>10s} {'G1 min cos':>11s} {'G3 med|dlogit|':>15s} {'G3 p95':>8s} {'top-1':>7s}")
+          for row in rows:
+              quant, ok, parity, cos_min, med, p95, top1 = row
+              fmt = lambda v: "n/a" if v is None else f"{v:.6g}"
+              print(f"{quant:10s} {str(ok):5s} {parity * 100:9.2f}% {fmt(cos_min):>11s} {fmt(med):>15s} {fmt(p95):>8s} {fmt(top1):>7s}")
+          if not rows:
+              print("no summary artifacts were produced")
+          PY
