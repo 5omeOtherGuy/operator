@@ -62,6 +62,35 @@ jobs:
       # job builds the arm64 dev channel with the native :llm.
       - name: Compile every channel
         run: ./gradlew :app:assembleDevDebug :app:assembleProdDebug :app:assembleEmulatorStubDebug -Poperator.noNative=true --stacktrace --console=plain
+      # Issue #17: the JVM unit tests of the Android modules, every :app channel included, so that
+      # tests depending on :llm (dev, prod) and on :llm-stub (emulatorStub) both run. A failing test
+      # fails the step; the count proves the suites actually executed.
+      - name: Android module unit tests
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDevDebugUnitTest :app:testProdDebugUnitTest :app:testEmulatorStubDebugUnitTest \
+            :llm-api:testDebugUnitTest :llm-stub:testDebugUnitTest -Poperator.noNative=true --stacktrace --console=plain
+          shopt -s nullglob
+          reports=(app/build/test-results/test*UnitTest/*.xml llm-api/build/test-results/test*UnitTest/*.xml llm-stub/build/test-results/test*UnitTest/*.xml)
+          total=0
+          for report in "${reports[@]}"; do
+            n="$(grep -o '<testsuite [^>]*' "$report" | grep -o ' tests="[0-9]*"' | grep -o '[0-9]*')"
+            echo "$n tests: $report"
+            total=$((total + n))
+          done
+          echo "Android module unit tests executed: $total"
+      - name: Upload the unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-unit-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            llm-api/build/reports/tests/
+            llm-api/build/test-results/
+            llm-stub/build/reports/tests/
+            llm-stub/build/test-results/
 
   apk:
     name: apk (dev arm64 native, emulatorStub, fixture)

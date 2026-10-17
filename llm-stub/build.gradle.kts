@@ -32,4 +32,6 @@ kotlin {
 
 dependencies {
     api(project(":llm-api"))
+
+    testImplementation(libs.junit)
 }

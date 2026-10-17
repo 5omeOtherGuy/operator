@@ -85,4 +85,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
 }
