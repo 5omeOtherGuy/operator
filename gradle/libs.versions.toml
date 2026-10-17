@@ -1,12 +1,13 @@
 # Single version catalog for the operator build (F0 owns this file; slices append only with a lead decision).
 # FOUNDATION §4.2 / ADR-0005 tied AGP, Kotlin and the NDK to third_party/llama.cpp/examples/llama.android at
-# 9588757. That example still pins AGP 8.13.2, Kotlin 2.3.0 and NDK 29.0.13113456 upstream; the build here moved
-# ahead of it (AGP 9 built-in Kotlin, NDK 30), and the submodule stays at 9588757 (its Kotlin and CMake sources
-# compile unchanged).
+# 9588757. That example still pins AGP 8.13.2, Kotlin 2.3.0 and NDK 29.0.13113456 (an rc) upstream; the build
+# here moved ahead of it (AGP 9 built-in Kotlin, the stable NDK r29), and the submodule stays at 9588757 (its
+# Kotlin and CMake sources compile unchanged). NDK 30.0.16248370's clang crashes ("malloc(): invalid size") on
+# ggml-cpu/arch/arm/repack.cpp in the armv9.0 CPU variant at 9588757, so the NDK stays on r29 for now.
 [versions]
 agp = "9.4.1"
 kotlin = "2.4.21"
-ndk = "30.0.16248370"
+ndk = "29.0.14206865"
 
 # AndroidX
 core-ktx = "1.19.1"
