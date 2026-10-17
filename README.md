@@ -1,8 +1,10 @@
 # operator
 
-A local LLM that operates an Android phone. The model runs on the device, and an app on the same device carries out its actions. Nothing leaves the phone.
+A local LLM that operates an Android phone: on-device model plus an accessibility-service app.
 
 Status: prototype. Development is paused; `main` holds the M1 foundation (module skeleton, frozen core API, CI), and nothing is installable or usable yet.
+
+The model runs on the device, and an app on the same device carries out its actions. Nothing leaves the phone.
 
 ## Design
 
@@ -31,6 +33,8 @@ Reference device: OnePlus 13 (SM8750, 16 GB RAM), OxygenOS 16.
 
 ## Build
 
+`scripts/gate` runs every check a change must pass (secret scan, tests, NDK-free compile of every channel); it needs JDK 17, an Android SDK, the `third_party/llama.cpp` submodule and `gitleaks`, and is what the CI job `gate` runs. See [`AGENTS.md`](AGENTS.md) for the repository rules.
+
 `./gradlew :agent-core:test` — the pure Kotlin/JVM module builds and tests with JDK 17 alone. The five Android modules (`:app`, `:llm-api`, `:llm`, `:llm-stub`, `:fixture`) are only included when an Android SDK is present (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, or `sdk.dir` in `local.properties`), so this works on a JDK-only machine.
 
 `:app` has three channels (§12): `dev` (arm64-v8a, native `:llm`, `testOnly` and debuggable, ships the `EvalReceiver` eval surface), `prod` (arm64-v8a, native `:llm`, no eval surface — the future non-testOnly release) and `emulatorStub` (x86_64, the Kotlin-only `:llm-stub`, no native code by construction). All three share the `dev.operator` application id and, until ADR-0014's key exists, the debug signing key.
@@ -38,3 +42,7 @@ Reference device: OnePlus 13 (SM8750, 16 GB RAM), OxygenOS 16.
 APKs come from GitHub Actions: the `apk` job of `.github/workflows/build.yml` builds the `dev` (arm64-v8a, native `:llm`), the `emulatorStub` (x86_64, no native code) and the `fixture` variant and uploads them as the `operator-apks` artifact. The `checks` job prints the `.so` set of both operator APKs and fails when the dev APK carries no `libggml-cpu*.so` or when the stub APK carries any `.so`; it also fails when the dev channel's merged manifest is not `testOnly` or when the `prod` channel's manifest carries `EvalReceiver`, `APPROVE_GATE` or `testOnly`.
 
 With an SDK and the pinned NDK `29.0.13113456` plus CMake `3.31.6` installed: `./gradlew :app:assembleDevRelease` builds the arm64-v8a dev APK with the native `:llm`, and `./gradlew :app:assembleEmulatorStubRelease` builds the native-free emulator APK with no flag at all. `-Poperator.noNative=true` skips `externalNativeBuild` entirely, which is what the fast `kotlin` CI job uses for the whole channel matrix.
+
+## Licence
+
+MIT, see [`LICENSE`](LICENSE). The llama.cpp submodule keeps its own MIT licence.
