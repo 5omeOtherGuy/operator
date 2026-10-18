@@ -2,11 +2,12 @@
 
 ## Profile
 - Purpose: an on-device LLM that operates an Android phone through an accessibility-service app
-- Stage: prototype (repository standard 2026-10-17)
+- Stage: prototype (repository standard 2026-10-18)
 - Gate: `scripts/gate` (CI job `gate`)
 - Landing: direct to main after a green gate; agents land: yes (default)
 - Release: none; agents release: no (default)
 - Outside issues and PRs: agents triage (default); outside PRs merge: owner approves (default)
+- Sensitive paths: `AGENTS.md`, `.agents/`, `scripts/gate`, `.github/workflows/`, `gradlew`, `gradle/wrapper/`, `settings.gradle.kts` (dependency repositories), `gradle/libs.versions.toml`, `.gitmodules`, `third_party/`, `llm/build.gradle.kts` and `llm/src/main/cpp/CMakeLists.txt` (dependency sources and native build), `app/build.gradle.kts` and `fixture/build.gradle.kts` (channels and signing), every `AndroidManifest.xml`, `app/src/main/res/xml/`, `app/src/dev/` (eval surface), `app/src/main/java/dev/operator/{hands,adapters,gate}/` (effects and the confirmation gate), the frozen interfaces `agent-core/src/main/kotlin/dev/operator/core/api/` and `llm-api/src/main/aidl/`, and the IPC payloads `llm-api/src/main/java/dev/operator/llm/`
 
 Deliberate deviations from the standard: none.
 
