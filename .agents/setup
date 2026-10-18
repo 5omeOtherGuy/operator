@@ -14,7 +14,7 @@ if ! dpkg -s openjdk-17-jdk-headless > /dev/null 2>&1; then
 fi
 java -version 2>&1 | head -n 1
 
-step "Android SDK (platform 36, build-tools 35.0.0)"
+step "Android SDK (platform 37.0, build-tools 36.0.0)"
 sdk="$HOME/android-sdk"
 sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
 if [ ! -x "$sdkmanager" ]; then
@@ -26,12 +26,12 @@ if [ ! -x "$sdkmanager" ]; then
   mv "$tmp/cmdline-tools" "$sdk/cmdline-tools/latest"
   rm -rf "$tmp"
 fi
-if [ ! -d "$sdk/platforms/android-36" ] || [ ! -d "$sdk/build-tools/35.0.0" ]; then
+if [ ! -d "$sdk/platforms/android-37.0" ] || [ ! -d "$sdk/build-tools/36.0.0" ]; then
   # `yes` dies with SIGPIPE once sdkmanager stops reading; the directory checks decide success.
   yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
-  "$sdkmanager" "platforms;android-36" "build-tools;35.0.0" > /dev/null
+  "$sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
 fi
-test -d "$sdk/platforms/android-36" && test -d "$sdk/build-tools/35.0.0"
+test -d "$sdk/platforms/android-37.0" && test -d "$sdk/build-tools/36.0.0"
 # Gradle and scripts/gate read sdk.dir from the git-ignored local.properties.
 [ -f local.properties ] || echo "sdk.dir=$sdk" > local.properties
 
